@@ -565,7 +565,7 @@ const PromptNode = ({ data, id }) => {
                 const output_nodes = outputEdgesForNode(id).map(e => e.target);
                 output_nodes.forEach(n => {
                     const node = getNode(n);
-                    if (node && node.type === 'inspect') {
+                    if (node && (node.type === 'inspect' || node.type === 'elena')) {
                         setDataPropsForNode(node.id, { refresh: true });
                     }
                 });

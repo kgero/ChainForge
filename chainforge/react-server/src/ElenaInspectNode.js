@@ -3,7 +3,7 @@ import { Handle } from 'react-flow-renderer';
 import useStore from './store';
 import NodeLabel from './NodeLabelComponent'
 import {BASE_URL} from './store';
-import { Grid, Select } from '@mantine/core';
+import { Grid, Select, Radio, Group } from '@mantine/core';
 import './output-grid.css';
 
 
@@ -20,6 +20,7 @@ const ElenaInspectNode = ({ data, id }) => {
 
   const [columnValue, setColumnValue] = useState([]);
   const [rowValue, setRowValue] = useState([]);
+  const [highlightRadioValue, setHighlightRadioValue] = useState([]);
 
   // Update the visualization whenever 'jsonResponses' changes:
   useEffect(() => {
@@ -30,20 +31,37 @@ const ElenaInspectNode = ({ data, id }) => {
     // ....
 
     const badNgram = (ngram) => {
-      const cleanngram = ngram.trim();
-      const badwords = [
+      const cleanNgram = ngram.trim();
+      const badWords = [
         "the",
+        "and",
         "an",
         "a",
+        "as",
+        "with",
+        "its",
+        "of",
+        "our",
+        "in",
         "this",
         "that",
         "these",
         "those",
+        "their",
+        "they",
+        "them",
+        "to",
         ".",
         ",",
         ";"
       ];
-      if (badwords.includes(cleanngram.toLowerCase())) {
+      const badBigrams = badWords.flatMap((word1, index1) => 
+        badWords.filter((_, index2) => index1 !== index2).map(word2 => word1 + ' ' + word2)
+      );
+      if (badWords.includes(cleanNgram.toLowerCase())) {
+        return true;
+      }
+      if (badBigrams.includes(cleanNgram.toLowerCase())) {
         return true;
       }
       return false;
@@ -131,11 +149,19 @@ const ElenaInspectNode = ({ data, id }) => {
 
     console.log("CUSTOM INSPECT NODE");
     console.log(jsonResponses);
-    let jsonResponsesMod = jsonResponses.map((obj) => {
-        obj.vars.llm = obj.llm;
-        obj.responsesTokenized = obj.responses.map((obj) => tokenize(obj));
-        return obj;
-    })
+    // first create an object for each response, copying all other attributes
+    // (originally 'response' is a list of responses, but creating one per object makes some other logic simpler)
+    // also add 'llm' attribute to 'vars' (because we're going to use 'vars' to set the cols and rows)
+    // and create a tokenized version of the response
+    let jsonResponsesMod = jsonResponses.flatMap(obj =>
+        obj.responses.map((response, index) => ({
+            ...obj,
+            vars: { ...obj.vars, responseNum: index, llm: obj.llm },
+            response: response,
+            responseTokenized: tokenize(response)
+
+        }))
+    );
     console.log('new', jsonResponsesMod);
 
     // find all vars for table
@@ -155,21 +181,37 @@ const ElenaInspectNode = ({ data, id }) => {
             // assumes it should only find one (i.e. takes first item in filtered list)
             let cellData = jsonResponsesMod.filter(resp => resp.vars[columnValue] === col_names[x] && resp.vars[rowValue] === row_names[y])[0];
             if (!cellData) {
-                cellData = {'responsesTokenized': ['∅']};
+                cellData = {'responseTokenized': ['∅']};
             }
+
             row.push(cellData);
         }
         gridResponses.push(row);
     }
     console.log('gridResponses', gridResponses);
 
-    const rowNgrams = gridResponses.map((row) => selectNgrams(row.map((cell) => cell.responsesTokenized[0]), 5, 3));
+    const rowNgrams = gridResponses.map((row) => selectNgrams(row.map((cell) => cell.responseTokenized), 5, 3));
+    const colNgrams = gridResponses[0].map((_, i) => selectNgrams(gridResponses.map((row) => row[i].responseTokenized), 5, 3));
     console.log('rowNgrams', rowNgrams);
+    console.log('colNgrams', colNgrams);
 
-    const shouldHighlight = (rowIndex, cellIndex, tokenIndex) => {
+    const shouldHighlightRowNgrams = (rowIndex, cellIndex, tokenIndex) => {
         for (const [ngram, locations] of Object.entries(rowNgrams[rowIndex])) {
             for (let l = 0; l < locations.length; l++) {
               if (locations[l].i === cellIndex) {
+                // if this ngram occurs in this string
+                if (tokenIndex >= locations[l].j && tokenIndex < locations[l].j + locations[l].n) {
+                    return true;
+                }
+              }
+            }
+        }
+        return false;
+    }
+    const shouldHighlightColNgrams = (rowIndex, cellIndex, tokenIndex) => {
+        for (const [ngram, locations] of Object.entries(colNgrams[cellIndex])) {
+            for (let l = 0; l < locations.length; l++) {
+              if (locations[l].i === rowIndex) {
                 // if this ngram occurs in this string
                 if (tokenIndex >= locations[l].j && tokenIndex < locations[l].j + locations[l].n) {
                     return true;
@@ -191,9 +233,18 @@ const ElenaInspectNode = ({ data, id }) => {
                 <th>{row_names[rowIndex]}</th>
                 {row.map((cell, cellIndex) => (
                     <td key={cellIndex}>
-                            {cell.responsesTokenized[0].map((token, tokenIndex) => {
-                                const highlight = shouldHighlight(rowIndex, cellIndex, tokenIndex);
-                                const spanStyle = highlight ? {backgroundColor: 'yellow'} : {};
+                            {cell.responseTokenized.map((token, tokenIndex) => {
+                                let highlight = false; 
+                                let oddEven = false;
+                                if (highlightRadioValue === "row") { 
+                                    highlight = shouldHighlightRowNgrams(rowIndex, cellIndex, tokenIndex); 
+                                    oddEven = rowIndex % 2 == 0;
+                                }
+                                else if (highlightRadioValue === "col") { 
+                                    highlight = shouldHighlightColNgrams(rowIndex, cellIndex, tokenIndex); 
+                                    oddEven = cellIndex % 2 == 0;
+                                }
+                                const spanStyle = highlight ? {backgroundColor: oddEven ? 'thistle' : 'plum'} : {};
                                 return <span key={tokenIndex} style={spanStyle}>{token} </span>;
                             })}
                     </td>
@@ -210,6 +261,9 @@ const ElenaInspectNode = ({ data, id }) => {
     const handleRowValueChange = (new_val) => {
         setRowValue(new_val);
     };
+    const handleHighlightRadioValue = new_val => {
+        setHighlightRadioValue(new_val);
+    }
 
     // Set the HTML / React element
     const my_vis_component = (<div>
@@ -235,6 +289,19 @@ const ElenaInspectNode = ({ data, id }) => {
                 />
             </Grid.Col>
         </Grid>
+        <p></p>
+        <Radio.Group
+          value={highlightRadioValue}
+          onChange={handleHighlightRadioValue}
+          name="highlightRadioValue"
+          label="Select what you would like to highlight"
+        >
+          <Group mt="xs">
+            <Radio value="none" label="None" />
+            <Radio value="row" label="Rows" />
+            <Radio value="col" label="Columns" />
+          </Group>
+        </Radio.Group>
         
         <table class='outputgrid'>
             <tbody>
@@ -247,7 +314,7 @@ const ElenaInspectNode = ({ data, id }) => {
                              </div></div>);  // replace with your own
     setVisualization(my_vis_component);
 
-  }, [columnValue, rowValue, jsonResponses]);
+  }, [columnValue, rowValue, highlightRadioValue, jsonResponses]);
 
   // Grab the LLM(s) response data from the back-end server.
   // Called upon connect to another node, or upon a 'refresh' triggered upstream.

@@ -20,6 +20,7 @@ const ElenaInspectNode = ({ data, id }) => {
 
   const [columnValue, setColumnValue] = useState([]);
   const [rowValue, setRowValue] = useState([]);
+  const [altValues, setAltValues] = useState([]);
   const [highlightRadioValue, setHighlightRadioValue] = useState([]);
 
   // Update the visualization whenever 'jsonResponses' changes:
@@ -144,11 +145,12 @@ const ElenaInspectNode = ({ data, id }) => {
     }
 
     const tokenize = (string) => {
+        string = string.replaceAll("\n", " \n ");
         return string.split(" ");
     }
 
     console.log("CUSTOM INSPECT NODE");
-    console.log(jsonResponses);
+    console.log('jsonResponses', jsonResponses);
     // first create an object for each response, copying all other attributes
     // (originally 'response' is a list of responses, but creating one per object makes some other logic simpler)
     // also add 'llm' attribute to 'vars' (because we're going to use 'vars' to set the cols and rows)
@@ -156,19 +158,24 @@ const ElenaInspectNode = ({ data, id }) => {
     let jsonResponsesMod = jsonResponses.flatMap(obj =>
         obj.responses.map((response, index) => ({
             ...obj,
-            vars: { ...obj.vars, responseNum: index, llm: obj.llm },
+            vars: { ...obj.vars, responseNum: index.toString(), llm: obj.llm },
             response: response,
             responseTokenized: tokenize(response)
 
         }))
     );
-    console.log('new', jsonResponsesMod);
+    console.log('jsonResponsesMod', jsonResponsesMod);
 
     // find all vars for table
     const var_names = [...new Set(jsonResponsesMod.map((obj) => Object.keys(obj.vars)).flat(1))];
     const tab_options = [var_names].flat(1);
 
-    // set the var for rows and volumns
+    // set up the alt options -- the values that will not be represented in the table axes
+    // right now this is same as tab options, but later we'll remove the selected table axes as options
+    let alt_options = tab_options.slice();
+
+    // set the var for rows and columns
+    // note that columnValue and rowValue are set by a dropdown (see e.g. handleColumnValueChange)
     let col_names = [...new Set(jsonResponsesMod.map((obj) => obj.vars[columnValue]))];
     let row_names = [...new Set(jsonResponsesMod.map((obj) => obj.vars[rowValue]))];
 
@@ -177,18 +184,34 @@ const ElenaInspectNode = ({ data, id }) => {
     for (let y=0; y<row_names.length; y++) {
         let row = [];
         for (let x=0; x<col_names.length; x++) {
-            // find the data that goes in that cell
+            // find the data that goes in that cell given the row and col
             // assumes it should only find one (i.e. takes first item in filtered list)
-            let cellData = jsonResponsesMod.filter(resp => resp.vars[columnValue] === col_names[x] && resp.vars[rowValue] === row_names[y])[0];
+            let cellData = jsonResponsesMod.filter(resp => resp.vars[columnValue] === col_names[x] && resp.vars[rowValue] === row_names[y]);
+            // now filter it given any extra options that need to be selected
+            // for some reason altValues contains bad keys, i.e. keys that aren't in tab_options; I'm not sure why
+
+            cellData = cellData.filter(resp => {
+                return Object.entries(altValues).every(([key, val]) => {
+                    if (key === columnValue) { return resp; }
+                    if (key === rowValue) { return resp; }
+                    return resp.vars[key] === val;
+                });
+            });
+
+            if (cellData.length > 1) {
+                console.log('cell', y, x, 'has more than one response');
+            }
+            cellData = cellData[0];
             if (!cellData) {
                 cellData = {'responseTokenized': ['∅']};
             }
-
             row.push(cellData);
         }
         gridResponses.push(row);
     }
     console.log('gridResponses', gridResponses);
+    console.log('columnValue', columnValue);
+    console.log('altValues', altValues);
 
     const rowNgrams = gridResponses.map((row) => selectNgrams(row.map((cell) => cell.responseTokenized), 5, 3));
     const colNgrams = gridResponses[0].map((_, i) => selectNgrams(gridResponses.map((row) => row[i].responseTokenized), 5, 3));
@@ -245,13 +268,17 @@ const ElenaInspectNode = ({ data, id }) => {
                                     oddEven = cellIndex % 2 == 0;
                                 }
                                 const spanStyle = highlight ? {backgroundColor: oddEven ? 'thistle' : 'plum'} : {};
-                                return <span key={tokenIndex} style={spanStyle}>{token} </span>;
+                                if (token == "\n") {return <br/>;}
+                                if (token == "\n\n") {return <><br/><br/></>;}
+                                return <span key={tokenIndex} style={spanStyle}>{token} </span>;;
                             })}
                     </td>
                 ))}
             </tr>
         );
     });
+
+    
 
     // ==========================================================
 
@@ -261,15 +288,43 @@ const ElenaInspectNode = ({ data, id }) => {
     const handleRowValueChange = (new_val) => {
         setRowValue(new_val);
     };
+    const handleAltValuesChange = (new_val, name) => {
+        setAltValues(prevState => {
+            return {...prevState, [name]: new_val}
+        });
+    };
     const handleHighlightRadioValue = new_val => {
         setHighlightRadioValue(new_val);
     }
 
+    const alt_select_obj = tab_options.map((alt_value, index) => {
+        if (columnValue == null || rowValue == null || columnValue == "" || rowValue == "") {
+            return (<></>);
+        }
+        if (alt_value == columnValue || alt_value == rowValue) {
+            return (<></>);
+        }
+        // get the actual options for this value
+        let these_options = [...new Set(jsonResponsesMod.map((obj) => obj.vars[alt_value]))];
+        return (
+            <Grid.Col span={2}>
+                <Select
+                  onChange={(value) => handleAltValuesChange(value, alt_value)}
+                  label={alt_value}
+                  placeholder="Pick one"
+                  defaultValue=""
+                  data={these_options}
+                  value={altValues[alt_value]}
+                />
+            </Grid.Col>
+        );
+    });
+
     // Set the HTML / React element
     const my_vis_component = (<div>
         <Grid>
-            <Grid.Col span={4}>
-                <Select
+            <Grid.Col span={2}>
+                <Select clearable
                   onChange={handleColumnValueChange}
                   label="Columns"
                   placeholder="Pick one"
@@ -278,8 +333,8 @@ const ElenaInspectNode = ({ data, id }) => {
                   value={columnValue}
                 />
             </Grid.Col>
-            <Grid.Col span={4}>
-                <Select
+            <Grid.Col span={2}>
+                <Select clearable
                   onChange={handleRowValueChange}
                   label="Rows"
                   placeholder="Pick one"
@@ -288,6 +343,7 @@ const ElenaInspectNode = ({ data, id }) => {
                   value={rowValue}
                 />
             </Grid.Col>
+            {alt_select_obj}
         </Grid>
         <p></p>
         <Radio.Group
@@ -314,7 +370,7 @@ const ElenaInspectNode = ({ data, id }) => {
                              </div></div>);  // replace with your own
     setVisualization(my_vis_component);
 
-  }, [columnValue, rowValue, highlightRadioValue, jsonResponses]);
+  }, [columnValue, rowValue, altValues, highlightRadioValue, jsonResponses]);
 
   // Grab the LLM(s) response data from the back-end server.
   // Called upon connect to another node, or upon a 'refresh' triggered upstream.

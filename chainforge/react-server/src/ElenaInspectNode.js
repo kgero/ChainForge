@@ -257,7 +257,7 @@ const ElenaInspectNode = ({ data, id }) => {
     const corpus = jsonResponsesMod.map((obj) => obj.response);
     corpus.forEach((doc) => bm25.learn(nlp.readDoc(doc).tokens().out(its.normal)));
 
-    // pull out tf-idf
+    // pull out tf-idf and top terms
     const idf_array = bm25.out(its.idf);
     const idf_obj = idf_array.reduce((obj, [key, val]) => {
         obj[key] = val;
@@ -272,11 +272,26 @@ const ElenaInspectNode = ({ data, id }) => {
     console.log("tf", example);
     console.log("tf-idf", example.map((arr) => [arr[0], arr[1]*idf_obj[arr[0]]]));
     console.log("docBOWarray", docBowArray);
-    const topNTerms = (obj, n) => { 
-        return Object.keys(obj).sort((a, b) => obj[b] - obj[a]).slice(0, n)
+
+    const topNTerms = (i, n) => { 
+        // this version calculate the tf-df for doc number i
+        // then returns the top scoring n terms
+        const tf = bm25.doc(i).out(its.tf);
+        const tfidf = tf.map((arr) => [arr[0], arr[1]*idf_obj[arr[0]]])
+        tfidf.sort((a, b) => b[1] - a[1]);
+        let top = tfidf.slice(0, n);
+        return top.map(term => term[0]);
+        
+        // this version takes a docBOWarray (an array of [token, tf] pairs)
+        // and returns the top n tokens with the highest tf score
+        // return Object.keys(obj).sort((a, b) => obj[b] - obj[a]).slice(0, n)
     };
+    const tfidfArray = [...Array(jsonResponsesMod.length).keys()].map((i) => topNTerms(i, 5));
     console.log("docBowArray[0]", docBowArray[0]);
-    console.log("topNTerms", topNTerms(docBowArray[0], 5) );
+    console.log("topNTerms", topNTerms(0, 5) );
+
+    // parse sentences and create clusters
+
 
 
     // get the original prompt
@@ -373,9 +388,7 @@ const ElenaInspectNode = ({ data, id }) => {
     }
 
     const shouldHighlightTfidf = (cell, tokenIndex) => {
-        const n = 3;
-        const doc = docBowArray[cell.index];
-        if (topNTerms(doc, n).includes(cell.responseTokenized[tokenIndex].toLowerCase())) {
+        if (tfidfArray[cell.index].includes(cell.responseTokenized[tokenIndex].toLowerCase())) {
             return true;
         }
         return false;
@@ -501,7 +514,9 @@ const ElenaInspectNode = ({ data, id }) => {
             <Radio value="none" label="None" />
             <Radio value="row" label="LCS in Rows" />
             <Radio value="col" label="LCS in Columns" />
+            <Radio value="lcs" label="LCS in all" />
             <Radio value="tfidf" label="High tf-idf" />
+            <Radio value="sent" label="Sentence clusters" />
           </Group>
         </Radio.Group>
 

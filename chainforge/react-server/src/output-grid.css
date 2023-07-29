@@ -5,13 +5,14 @@
     min-height: 500px;
     height: 500px;
     max-width: 2000px;
-    max-height: 650px;
+    max-height: 2000px;
     resize: both;
   }
 table.outputgrid {
     border-collapse: separate;
     border-spacing: 10px;
     max-width: 100%;
+
   }
 td {
 	border: 1px solid blue;
@@ -20,4 +21,11 @@ td {
 	padding: 30px 10px 30px 10px;
 	vertical-align: middle;
 	font-size: .8em;
+	cursor: text;
+	pointer-events: all;
+	user-select: text; 
 }  
+p.prompt {
+	text-align: center;
+	font-weight: bold;
+}

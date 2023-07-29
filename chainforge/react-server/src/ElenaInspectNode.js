@@ -6,6 +6,15 @@ import {BASE_URL} from './store';
 import { Grid, Select, Radio, Group } from '@mantine/core';
 import './output-grid.css';
 
+import winkNLP from 'wink-nlp'
+import winkModel from 'wink-eng-lite-web-model'
+import BM25Vectorizer from 'wink-nlp/utilities/bm25-vectorizer'
+
+const nlp = winkNLP(winkModel);
+const its = nlp.its;
+
+
+
 
 const ElenaInspectNode = ({ data, id }) => {
 
@@ -144,6 +153,78 @@ const ElenaInspectNode = ({ data, id }) => {
       return topKNgrams;
     }
 
+     // Returns length of longest common substring of X[0..m-1] and Y[0..n-1]
+    const LCSubStr = (X, Y) => {
+        // Create a table to store lengths of longest common suffixes of substrings.
+        // Note that LCSuff[i][j] contains length of longest common suffix of
+        // X[0..i-1] and Y[0..j-1]. The first row and first column entries have no
+        // logical meaning, they are used only for simplicity of program
+        // based on https://www.geeksforgeeks.org/longest-common-substring-dp-29/
+
+        const m = X.length;
+        const n = Y.length;
+         
+        var LCSuff = Array(m + 1).fill().map(()=>Array(n + 1).fill(0));
+ 
+        // To store length of the longest common substring
+        var result = 0;
+
+        // To store the index of the cell which contains the maximum value. 
+        // This cell's index helps in building up the longest common substring 
+        // from right to left.
+        let row = 0, col = 0;
+ 
+        // Following steps build LCSuff[m+1][n+1] in bottom up fashion
+        for (let i = 0; i <= m; i++) {
+            for (let j = 0; j <= n; j++) {
+                if (i == 0 || j == 0)
+                    LCSuff[i][j] = 0;
+                else if (X[i - 1] == Y[j - 1]) {
+                    LCSuff[i][j] = LCSuff[i - 1][j - 1] + 1;
+                    if (result < LCSuff[i][j]) {
+                        result = LCSuff[i][j];
+                        row = i;
+                        col = j;
+                    }
+                } else
+                    LCSuff[i][j] = 0;
+            }
+        }
+        if (result == 0) {
+            console.log("No common substring."); // DEAL WITH THIS CASE
+        }
+        let resultStr = [];
+        while (LCSuff[row][col] != 0) {
+            resultStr.unshift(X[row-1]);
+            --result;
+            row--;
+            col--;
+        }
+        return {"string": resultStr, "x": row, "y": col};
+    }
+
+    // responses is an array of responseTokenized; returns dict of overlapping 
+    // strings and their locations in the format:
+    // {"text of string": [
+    //      {i: index of response string occurs in, 
+    //       j: index of token in response where string starts,
+    //       n: number of tokens in string}
+    // ]}
+    const findOverlap = (responses) => {
+        let overlaps = {}
+        for (let i = 0; i < responses.length-1; i++) {
+            for (let j = i+1; j < responses.length; j++) {
+                let lcs = LCSubStr(responses[i], responses[j]);
+                if (!overlaps.hasOwnProperty(lcs.string)) {
+                    overlaps[lcs.string] = [] 
+                }
+                overlaps[lcs.string].push({"i": i, "j": lcs.x, "n": lcs.string.length})
+                overlaps[lcs.string].push({"i": j, "j": lcs.y, "n": lcs.string.length})
+            }
+        }
+        return overlaps;
+    }
+
     const tokenize = (string) => {
         string = string.replaceAll("\n", " \n ");
         return string.split(" ");
@@ -155,16 +236,54 @@ const ElenaInspectNode = ({ data, id }) => {
     // (originally 'response' is a list of responses, but creating one per object makes some other logic simpler)
     // also add 'llm' attribute to 'vars' (because we're going to use 'vars' to set the cols and rows)
     // and create a tokenized version of the response
+    let counter = 0;
     let jsonResponsesMod = jsonResponses.flatMap(obj =>
-        obj.responses.map((response, index) => ({
-            ...obj,
-            vars: { ...obj.vars, responseNum: index.toString(), llm: obj.llm },
-            response: response,
-            responseTokenized: tokenize(response)
-
-        }))
+        obj.responses.map((response, index) => {
+            let currObj = {
+                ...obj,
+                vars: { ...obj.vars, responseNum: index.toString(), llm: obj.llm },
+                response: response,
+                responseTokenized: tokenize(response),
+                index: counter
+            };
+            counter++;
+            return currObj;
+        })
     );
     console.log('jsonResponsesMod', jsonResponsesMod);
+
+    // learn the bm25 vectors
+    const bm25 = BM25Vectorizer();
+    const corpus = jsonResponsesMod.map((obj) => obj.response);
+    corpus.forEach((doc) => bm25.learn(nlp.readDoc(doc).tokens().out(its.normal)));
+
+    // pull out tf-idf
+    const idf_array = bm25.out(its.idf);
+    const idf_obj = idf_array.reduce((obj, [key, val]) => {
+        obj[key] = val;
+        return obj;
+    }, {});
+    console.log("idf_obj", idf_obj);
+    const example = bm25.doc(0).out(its.tf);
+    const docBowArray = bm25.out(its.docBOWArray);
+    console.log("jsonResponsesMod:", jsonResponsesMod[0].response);
+    console.log("corpus", corpus[0]);
+    console.log("bm25 doc", bm25.doc(0).out(its.normal));
+    console.log("tf", example);
+    console.log("tf-idf", example.map((arr) => [arr[0], arr[1]*idf_obj[arr[0]]]));
+    console.log("docBOWarray", docBowArray);
+    const topNTerms = (obj, n) => { 
+        return Object.keys(obj).sort((a, b) => obj[b] - obj[a]).slice(0, n)
+    };
+    console.log("docBowArray[0]", docBowArray[0]);
+    console.log("topNTerms", topNTerms(docBowArray[0], 5) );
+
+
+    // get the original prompt
+    let prompt = jsonResponses[0].prompt
+    for (const key in jsonResponses[0].vars) {
+        prompt = prompt.replace(jsonResponses[0].vars[key], "{"+key+"}");
+    }
 
     // find all vars for table
     const var_names = [...new Set(jsonResponsesMod.map((obj) => Object.keys(obj.vars)).flat(1))];
@@ -188,8 +307,6 @@ const ElenaInspectNode = ({ data, id }) => {
             // assumes it should only find one (i.e. takes first item in filtered list)
             let cellData = jsonResponsesMod.filter(resp => resp.vars[columnValue] === col_names[x] && resp.vars[rowValue] === row_names[y]);
             // now filter it given any extra options that need to be selected
-            // for some reason altValues contains bad keys, i.e. keys that aren't in tab_options; I'm not sure why
-
             cellData = cellData.filter(resp => {
                 return Object.entries(altValues).every(([key, val]) => {
                     if (key === columnValue) { return resp; }
@@ -197,10 +314,6 @@ const ElenaInspectNode = ({ data, id }) => {
                     return resp.vars[key] === val;
                 });
             });
-
-            if (cellData.length > 1) {
-                console.log('cell', y, x, 'has more than one response');
-            }
             cellData = cellData[0];
             if (!cellData) {
                 cellData = {'responseTokenized': ['∅']};
@@ -213,13 +326,27 @@ const ElenaInspectNode = ({ data, id }) => {
     console.log('columnValue', columnValue);
     console.log('altValues', altValues);
 
+    // calculate longest common substring for each pair
+
+    // let LCS = LCSubStr(gridResponses[0][0].responseTokenized, gridResponses[1][0].responseTokenized);
+    // console.log('LCS for', gridResponses[0][0].responseTokenized);
+    // console.log('and', gridResponses[1][0].responseTokenized);
+    // console.log('is', LCS);
+    // console.log("responses", gridResponses.map((row) => row.map((cell) => cell.responseTokenized)));
+
+    const rowLCS = gridResponses.map((row) => findOverlap(row.map((cell) => cell.responseTokenized)));
+    const colLCS = gridResponses[0].map((_, i) => findOverlap(gridResponses.map((row) => row[i].responseTokenized)));
+    console.log("rowLCS", rowLCS);
+    console.log("colLCS", colLCS);
+
+
     const rowNgrams = gridResponses.map((row) => selectNgrams(row.map((cell) => cell.responseTokenized), 5, 3));
     const colNgrams = gridResponses[0].map((_, i) => selectNgrams(gridResponses.map((row) => row[i].responseTokenized), 5, 3));
     console.log('rowNgrams', rowNgrams);
     console.log('colNgrams', colNgrams);
 
     const shouldHighlightRowNgrams = (rowIndex, cellIndex, tokenIndex) => {
-        for (const [ngram, locations] of Object.entries(rowNgrams[rowIndex])) {
+        for (const [ngram, locations] of Object.entries(rowLCS[rowIndex])) {
             for (let l = 0; l < locations.length; l++) {
               if (locations[l].i === cellIndex) {
                 // if this ngram occurs in this string
@@ -232,7 +359,7 @@ const ElenaInspectNode = ({ data, id }) => {
         return false;
     }
     const shouldHighlightColNgrams = (rowIndex, cellIndex, tokenIndex) => {
-        for (const [ngram, locations] of Object.entries(colNgrams[cellIndex])) {
+        for (const [ngram, locations] of Object.entries(colLCS[cellIndex])) {
             for (let l = 0; l < locations.length; l++) {
               if (locations[l].i === rowIndex) {
                 // if this ngram occurs in this string
@@ -241,6 +368,15 @@ const ElenaInspectNode = ({ data, id }) => {
                 }
               }
             }
+        }
+        return false;
+    }
+
+    const shouldHighlightTfidf = (cell, tokenIndex) => {
+        const n = 3;
+        const doc = docBowArray[cell.index];
+        if (topNTerms(doc, n).includes(cell.responseTokenized[tokenIndex].toLowerCase())) {
+            return true;
         }
         return false;
     }
@@ -267,6 +403,9 @@ const ElenaInspectNode = ({ data, id }) => {
                                     highlight = shouldHighlightColNgrams(rowIndex, cellIndex, tokenIndex); 
                                     oddEven = cellIndex % 2 == 0;
                                 }
+                                else if (highlightRadioValue === "tfidf") {
+                                    highlight = shouldHighlightTfidf(cell, tokenIndex);
+                                }
                                 const spanStyle = highlight ? {backgroundColor: oddEven ? 'thistle' : 'plum'} : {};
                                 if (token == "\n") {return <br/>;}
                                 if (token == "\n\n") {return <><br/><br/></>;}
@@ -284,15 +423,21 @@ const ElenaInspectNode = ({ data, id }) => {
 
     const handleColumnValueChange = (new_val) => {
         setColumnValue(new_val);
+        setAltValues({});
     };
     const handleRowValueChange = (new_val) => {
         setRowValue(new_val);
+        setAltValues({});
     };
     const handleAltValuesChange = (new_val, name) => {
         setAltValues(prevState => {
             return {...prevState, [name]: new_val}
         });
     };
+    const resetAltValues = () => {
+        setAltValues({});
+      };
+
     const handleHighlightRadioValue = new_val => {
         setHighlightRadioValue(new_val);
     }
@@ -354,10 +499,13 @@ const ElenaInspectNode = ({ data, id }) => {
         >
           <Group mt="xs">
             <Radio value="none" label="None" />
-            <Radio value="row" label="Rows" />
-            <Radio value="col" label="Columns" />
+            <Radio value="row" label="LCS in Rows" />
+            <Radio value="col" label="LCS in Columns" />
+            <Radio value="tfidf" label="High tf-idf" />
           </Group>
         </Radio.Group>
+
+        <p class="prompt">{prompt}</p>
         
         <table class='outputgrid'>
             <tbody>

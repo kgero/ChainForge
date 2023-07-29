@@ -3,15 +3,17 @@ import { Handle } from 'react-flow-renderer';
 import useStore from './store';
 import NodeLabel from './NodeLabelComponent'
 import {BASE_URL} from './store';
-import { Grid, Select, Radio, Group } from '@mantine/core';
+import { Grid, Select, Radio, NumberInput, Group } from '@mantine/core';
 import './output-grid.css';
 
 import winkNLP from 'wink-nlp'
 import winkModel from 'wink-eng-lite-web-model'
 import BM25Vectorizer from 'wink-nlp/utilities/bm25-vectorizer'
+import similarity from 'wink-nlp/utilities/similarity.js'
 
 const nlp = winkNLP(winkModel);
 const its = nlp.its;
+const as = nlp.as;
 
 
 
@@ -31,6 +33,7 @@ const ElenaInspectNode = ({ data, id }) => {
   const [rowValue, setRowValue] = useState([]);
   const [altValues, setAltValues] = useState([]);
   const [highlightRadioValue, setHighlightRadioValue] = useState([]);
+  const [sentNum, setSentNum] = useState([]);
 
   // Update the visualization whenever 'jsonResponses' changes:
   useEffect(() => {
@@ -236,17 +239,39 @@ const ElenaInspectNode = ({ data, id }) => {
     // (originally 'response' is a list of responses, but creating one per object makes some other logic simpler)
     // also add 'llm' attribute to 'vars' (because we're going to use 'vars' to set the cols and rows)
     // and create a tokenized version of the response
-    let counter = 0;
+    let counterResp = 0;
     let jsonResponsesMod = jsonResponses.flatMap(obj =>
         obj.responses.map((response, index) => {
+            const doc = nlp.readDoc(response.replaceAll("\n", " <br/> "));
+            const sentencesOut = doc.sentences().out();
+            const sentenceTokens = sentencesOut.map((text) => tokenize(text));
+            const flatTokens = sentenceTokens.flat();
+            let indices = [];
+            let counter = 0;
+
+            for (let sentence of sentenceTokens) {
+                let sentenceIndices = [];
+                for (let token of sentence) {
+                    sentenceIndices.push(counter);
+                    counter++;
+                }
+                indices.push(sentenceIndices);
+            }
+
+            const sentences = [...Array(sentencesOut.length).keys()].map((i) => ({
+                text: sentencesOut[i],
+                tokenIndices: indices[i],
+                bow: nlp.readDoc(sentencesOut[i]).tokens().out(its.value, as.bow)
+            }));
             let currObj = {
                 ...obj,
                 vars: { ...obj.vars, responseNum: index.toString(), llm: obj.llm },
                 response: response,
-                responseTokenized: tokenize(response),
-                index: counter
+                responseTokenized: flatTokens,
+                index: counterResp,
+                sentences: sentences
             };
-            counter++;
+            counterResp++;
             return currObj;
         })
     );
@@ -255,7 +280,7 @@ const ElenaInspectNode = ({ data, id }) => {
     // learn the bm25 vectors
     const bm25 = BM25Vectorizer();
     const corpus = jsonResponsesMod.map((obj) => obj.response);
-    corpus.forEach((doc) => bm25.learn(nlp.readDoc(doc).tokens().out(its.normal)));
+    corpus.forEach((doc) => bm25.learn(nlp.readDoc(doc).tokens().out(its.normal)));;
 
     // pull out tf-idf and top terms
     const idf_array = bm25.out(its.idf);
@@ -266,12 +291,12 @@ const ElenaInspectNode = ({ data, id }) => {
     console.log("idf_obj", idf_obj);
     const example = bm25.doc(0).out(its.tf);
     const docBowArray = bm25.out(its.docBOWArray);
-    console.log("jsonResponsesMod:", jsonResponsesMod[0].response);
-    console.log("corpus", corpus[0]);
-    console.log("bm25 doc", bm25.doc(0).out(its.normal));
-    console.log("tf", example);
-    console.log("tf-idf", example.map((arr) => [arr[0], arr[1]*idf_obj[arr[0]]]));
-    console.log("docBOWarray", docBowArray);
+    // console.log("jsonResponsesMod:", jsonResponsesMod[0].response);
+    // console.log("corpus", corpus[0]);
+    // console.log("bm25 doc", bm25.doc(0).out(its.normal));
+    // console.log("tf", example);
+    // console.log("tf-idf", example.map((arr) => [arr[0], arr[1]*idf_obj[arr[0]]]));
+    // console.log("docBOWarray", docBowArray);
 
     const topNTerms = (i, n) => { 
         // this version calculate the tf-df for doc number i
@@ -281,16 +306,44 @@ const ElenaInspectNode = ({ data, id }) => {
         tfidf.sort((a, b) => b[1] - a[1]);
         let top = tfidf.slice(0, n);
         return top.map(term => term[0]);
-        
+
         // this version takes a docBOWarray (an array of [token, tf] pairs)
         // and returns the top n tokens with the highest tf score
         // return Object.keys(obj).sort((a, b) => obj[b] - obj[a]).slice(0, n)
     };
     const tfidfArray = [...Array(jsonResponsesMod.length).keys()].map((i) => topNTerms(i, 5));
-    console.log("docBowArray[0]", docBowArray[0]);
-    console.log("topNTerms", topNTerms(0, 5) );
+    console.log('tfidfArray', tfidfArray);
+    // console.log("docBowArray[0]", docBowArray[0]);
+    // console.log("topNTerms", topNTerms(0, 5) );
 
     // parse sentences and create clusters
+    // this is a shitty version. for each sentence in the first response
+    // find the n most similar sentences. so there is a "cluster" 
+    // for each sentence in the first response.
+    const coreSentenceSet = jsonResponsesMod[0].sentences;
+    const sentenceSimilarities = coreSentenceSet.map((coreSentObj) => {
+        // for each "cluster" (i.e. sentence in first response)
+        // we will create an array of arrays
+        // where each item in the array represents one response
+        return jsonResponsesMod.map((respObj) => {
+            // for each response we create an array of scores
+            // where the scores represent the similarity between
+            // that sentence and the core sentence we are looking at
+            return respObj.sentences.map((thisSentObj) => {
+                return similarity.bow.cosine(coreSentObj.bow, thisSentObj.bow);
+            })
+        })
+    });
+    console.log("coreSentenceSet", coreSentenceSet.map((obj) => obj.text));
+    console.log("sentenceSimilarities", sentenceSimilarities);
+    const bestSentenceSimilarities = sentenceSimilarities.map((cluster) => {
+        return cluster.map((scoreList) => {
+            // index of max value
+            // from https://stackoverflow.com/questions/11301438/return-index-of-greatest-value-in-an-array
+            return scoreList.reduce((iMax, x, i, arr) => x > arr[iMax] ? i : iMax, 0);
+        })
+    });
+    console.log("bestSentenceSimilarities", bestSentenceSimilarities);
 
 
 
@@ -386,9 +439,19 @@ const ElenaInspectNode = ({ data, id }) => {
         }
         return false;
     }
-
     const shouldHighlightTfidf = (cell, tokenIndex) => {
         if (tfidfArray[cell.index].includes(cell.responseTokenized[tokenIndex].toLowerCase())) {
+            return true;
+        }
+        return false;
+    }
+    const shouldHighlightSentence = (cell, tokenIndex) => {
+        if (sentNum == null || sentNum.length == 0) {
+            return false;
+        }
+        const clusterScores = bestSentenceSimilarities[parseInt(sentNum)];
+        const bestSentenceIndex = clusterScores[cell.index];
+        if (cell.sentences[bestSentenceIndex].tokenIndices.includes(tokenIndex)) {
             return true;
         }
         return false;
@@ -419,9 +482,12 @@ const ElenaInspectNode = ({ data, id }) => {
                                 else if (highlightRadioValue === "tfidf") {
                                     highlight = shouldHighlightTfidf(cell, tokenIndex);
                                 }
+                                else if (highlightRadioValue === "sent") {
+                                    highlight = shouldHighlightSentence(cell, tokenIndex);
+                                }
                                 const spanStyle = highlight ? {backgroundColor: oddEven ? 'thistle' : 'plum'} : {};
-                                if (token == "\n") {return <br/>;}
-                                if (token == "\n\n") {return <><br/><br/></>;}
+                                if (token == "<br/>") {return <br/>;}
+                                if (token == "<br/><br/>") {return <><br/><br/></>;}
                                 return <span key={tokenIndex} style={spanStyle}>{token} </span>;;
                             })}
                     </td>
@@ -453,7 +519,12 @@ const ElenaInspectNode = ({ data, id }) => {
 
     const handleHighlightRadioValue = new_val => {
         setHighlightRadioValue(new_val);
-    }
+    };
+
+    const handleSentNumChange = (new_val) => {
+        console.log("setting sentNum to", new_val);
+        setSentNum(new_val);
+    };
 
     const alt_select_obj = tab_options.map((alt_value, index) => {
         if (columnValue == null || rowValue == null || columnValue == "" || rowValue == "") {
@@ -516,9 +587,22 @@ const ElenaInspectNode = ({ data, id }) => {
             <Radio value="col" label="LCS in Columns" />
             <Radio value="lcs" label="LCS in all" />
             <Radio value="tfidf" label="High tf-idf" />
-            <Radio value="sent" label="Sentence clusters" />
+            <Radio value="sent" label="Similar sentences" />
           </Group>
         </Radio.Group>
+        <p></p>
+        <Grid>
+            <Grid.Col span={2}>
+                <NumberInput
+                  // value="sentNum"
+                  onChange={handleSentNumChange}
+                  defaultValue={2}
+                  min={0}
+                  placeholder="Num"
+                  label="Sentence number"
+                />
+            </Grid.Col>
+        </Grid>
 
         <p class="prompt">{prompt}</p>
         
@@ -533,7 +617,7 @@ const ElenaInspectNode = ({ data, id }) => {
                              </div></div>);  // replace with your own
     setVisualization(my_vis_component);
 
-  }, [columnValue, rowValue, altValues, highlightRadioValue, jsonResponses]);
+  }, [columnValue, rowValue, altValues, highlightRadioValue, jsonResponses, sentNum]);
 
   // Grab the LLM(s) response data from the back-end server.
   // Called upon connect to another node, or upon a 'refresh' triggered upstream.

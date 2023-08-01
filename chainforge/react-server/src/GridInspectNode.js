@@ -6,6 +6,8 @@ import {BASE_URL} from './store';
 import { Grid, Select, Radio, NumberInput, Group } from '@mantine/core';
 import './output-grid.css';
 
+import embeddingsFilePath from './nlp_models/glove.6B.50d.10k.txt';
+
 import winkNLP from 'wink-nlp'
 import winkModel from 'wink-eng-lite-web-model'
 import BM25Vectorizer from 'wink-nlp/utilities/bm25-vectorizer'
@@ -15,6 +17,65 @@ const nlp = winkNLP(winkModel);
 const its = nlp.its;
 const as = nlp.as;
 
+
+// inspired by https://github.com/sauravjoshi23/GloVe-Embeddings-NLP-JS/tree/master
+// returns an object where each key is a word and the value is the vector
+const load_embeddings = (textdata) => {
+    // let data = fs.readFileSync('./nlp_models/glove.6B.50d.10k.txt')
+    let data = textdata;
+    data = data.toString()
+    data = data.split("\n")
+
+    let glove_embeddings = {}
+    for(var i=0; i<data.length;i++){
+        let values = data[i]
+        //tokenize -> separate word and vector
+        let tokens = values.split(' ')
+        let word = tokens.slice(0,1)[0];
+        let vect = tokens.slice(1,);
+        // coverting string to int
+        let int_vect = []
+        for(var j=0; j<vect.length;j++){
+            var num = Number(vect[j]);
+            int_vect.push(num);
+        }
+        glove_embeddings[word] = int_vect;
+    }
+    return glove_embeddings
+}
+
+
+const dot_product = (vector1, vector2) => {
+    if (vector1 == null || vector2 == null) {
+        return null;
+    }
+    let result = 0;
+    let length = vector1.length;
+    for (let i = 0; i < length; i++) {
+      result += vector1[i] * vector2[i];
+    }
+    return result;
+}
+
+const den_calculation = (vector) => {
+    let sum = 0;
+    let length = vector.length;
+    for (let i = 0; i < length; i++) {
+      sum += vector[i] * vector[i];
+    }
+    let result = Math.sqrt(sum);
+    return result;
+}
+
+const cosine_similarity = (vector1, vector2) => {
+    let num = dot_product(vector1, vector2);
+    if (num == null) {return null;}
+    let den1 = den_calculation(vector1);
+    let den2 = den_calculation(vector2);
+    let den = den1*den2;
+    let cos_sim = num/den;
+    return cos_sim;
+}
 
 
 
@@ -35,6 +96,9 @@ const GridInspectNode = ({ data, id }) => {
   const [highlightRadioValue, setHighlightRadioValue] = useState([]);
   const [sentNum, setSentNum] = useState([]);
 
+  const [embeddings, setEmbeddings] = useState('');
+
+
   // Update the visualization whenever 'jsonResponses' changes:
   useEffect(() => {
     if (!jsonResponses || (Array.isArray(jsonResponses) && jsonResponses.length === 0))
@@ -42,6 +106,16 @@ const GridInspectNode = ({ data, id }) => {
 
     // === Construct a visualization using jsonResponses here ===
     // ....
+
+    fetch(embeddingsFilePath)
+      .then(response => response.text())
+      .then(data => {
+        let embdata = load_embeddings(data)
+        setEmbeddings(embdata);
+      });
+
+    console.log("similarity of dog and cat", cosine_similarity(embeddings["cat"], embeddings["dog"]));
+    console.log("similarity of dog and table", cosine_similarity(embeddings["table"], embeddings["dog"]));
 
     const badNgram = (ngram) => {
       const cleanNgram = ngram.trim();

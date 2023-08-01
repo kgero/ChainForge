@@ -18,7 +18,7 @@ const as = nlp.as;
 
 
 
-const ElenaInspectNode = ({ data, id }) => {
+const GridInspectNode = ({ data, id }) => {
 
   let is_fetching = false;
 
@@ -693,9 +693,9 @@ const ElenaInspectNode = ({ data, id }) => {
   // The React HTML component to display:
   return (
     <div className="inspector-node cfnode">
-    <NodeLabel title={data.title || 'Elena\'s Inspect Node'} 
+    <NodeLabel title={data.title || 'Grid Inspect Node'} 
                 nodeId={id}
-                icon={'🔍'} />
+                icon={'⊞'} />
       <div className="katy-inspect-response-container nowheel nodrag">
         {visualization}
       </div>
@@ -710,4 +710,4 @@ const ElenaInspectNode = ({ data, id }) => {
   );
 };
 
-export default ElenaInspectNode;
+export default GridInspectNode;

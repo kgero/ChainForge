@@ -20,7 +20,7 @@ import ScriptNode from './ScriptNode';
 import AlertModal from './AlertModal';
 import CsvNode from './CsvNode';
 import TabularDataNode from './TabularDataNode';
-import ElenaInspectNode from './ElenaInspectNode';
+import GridInspectNode from './GridInspectNode';
 import GlobalSettingsModal from './GlobalSettingsModal';
 import ExampleFlowsModal from './ExampleFlowsModal';
 import AreYouSureModal from './AreYouSureModal';
@@ -53,7 +53,7 @@ const nodeTypes = {
   script: ScriptNode,
   csv: CsvNode,
   table: TabularDataNode,
-  elena: ElenaInspectNode,
+  grid: GridInspectNode,
 };
 
 // const connectionLineStyle = { stroke: '#ddd' };
@@ -132,11 +132,11 @@ const App = () => {
     addNode({ id: 'table-'+Date.now(), type: 'table', data: {}, position: {x: x-200, y:y-100} });
   };
 
-  const addElenaNode = (event) => {
+  const addGridNode = (event) => {
     const { x, y } = getViewportCenter();
-    addNode({ id: 'elenaNode-'+Date.now(), type: 'elena', data: {}, position: {x: x-200, y:y-100} });
+    addNode({ id: 'gridNode-'+Date.now(), type: 'grid', data: {}, position: {x: x-200, y:y-100} });
   };
-
+  
   const onClickExamples = () => {
     if (examplesModal && examplesModal.current)
       examplesModal.current.trigger();
@@ -500,7 +500,7 @@ const App = () => {
               <Menu.Item onClick={addInspectNode} icon={'🔍'}> Inspect Node </Menu.Item>
               <Menu.Item onClick={addCsvNode} icon={<IconCsv size="16px" />}> CSV Node </Menu.Item>
               <Menu.Item onClick={addTabularDataNode} icon={'🗂️'}> Tabular Data Node </Menu.Item>
-              <Menu.Item onClick={addElenaNode} icon={'🔍'}> Elena's Inspect Node </Menu.Item>
+              <Menu.Item onClick={addGridNode} icon={'⊞'}> Grid Inspect Node </Menu.Item>
               <Menu.Item onClick={addScriptNode} icon={<IconSettingsAutomation size="16px" />}> Global Scripts </Menu.Item>
           </Menu.Dropdown>
         </Menu>

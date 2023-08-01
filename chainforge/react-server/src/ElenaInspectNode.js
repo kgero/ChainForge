@@ -265,7 +265,7 @@ const ElenaInspectNode = ({ data, id }) => {
             }));
             let currObj = {
                 ...obj,
-                vars: { ...obj.vars, responseNum: index.toString(), llm: obj.llm },
+                vars: { ...obj.vars, responseNum: index.toString(), model: obj.llm },
                 response: response,
                 responseTokenized: flatTokens,
                 index: counterResp,
@@ -551,7 +551,11 @@ const ElenaInspectNode = ({ data, id }) => {
 
     // Set the HTML / React element
     const my_vis_component = (<div>
+        
         <Grid>
+            <Grid.Col span={2}>
+            <p>Set table dimensions:</p>
+            </Grid.Col>
             <Grid.Col span={2}>
                 <Select clearable
                   onChange={handleColumnValueChange}
@@ -572,24 +576,42 @@ const ElenaInspectNode = ({ data, id }) => {
                   value={rowValue}
                 />
             </Grid.Col>
+            
+        </Grid>
+        <p></p>
+        
+        <Grid>
+            <Grid.Col span={2}>
+                <p>Select which extra variables to view:</p>
+            </Grid.Col>
             {alt_select_obj}
         </Grid>
         <p></p>
-        <Radio.Group
-          value={highlightRadioValue}
-          onChange={handleHighlightRadioValue}
-          name="highlightRadioValue"
-          label="Select what you would like to highlight"
-        >
-          <Group mt="xs">
-            <Radio value="none" label="None" />
-            <Radio value="row" label="LCS in Rows" />
-            <Radio value="col" label="LCS in Columns" />
-            <Radio value="lcs" label="LCS in all" />
-            <Radio value="tfidf" label="High tf-idf" />
-            <Radio value="sent" label="Similar sentences" />
-          </Group>
-        </Radio.Group>
+
+        <Grid>
+            <Grid.Col span={2}>
+                <p>Select what to highlight:</p>
+            </Grid.Col>
+            <Grid.Col span={10}>
+                <Radio.Group
+                  value={highlightRadioValue}
+                  onChange={handleHighlightRadioValue}
+                  name="highlightRadioValue"
+                  defaultValue="none"
+                  // label="Select what you would like to highlight"
+                >
+                  <Group mt="xs">
+                    <Radio value="none" label="None" />
+                    <Radio value="row" label="LCS in Rows" />
+                    <Radio value="col" label="LCS in Columns" />
+                    <Radio value="lcs" label="LCS in all" />
+                    <Radio value="tfidf" label="High tf-idf" />
+                    <Radio value="sent" label="Similar sentences" />
+                  </Group>
+                </Radio.Group>
+            </Grid.Col>
+        </Grid>
+        
         <p></p>
         <Grid>
             <Grid.Col span={2}>

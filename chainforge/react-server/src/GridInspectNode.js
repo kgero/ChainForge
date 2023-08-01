@@ -83,6 +83,17 @@ const GridInspectNode = ({ data, id }) => {
 
   let is_fetching = false;
 
+  const [embeddings, setEmbeddings] = useState('');
+
+  useEffect(() => {
+    fetch(embeddingsFilePath)
+      .then(response => response.text())
+      .then(data => {
+        let embdata = load_embeddings(data);
+        setEmbeddings(embdata);
+      });
+  }, []);  // Empty dependency array
+
   const [visualization, setVisualization] = useState([]);
   const [jsonResponses, setJSONResponses] = useState(null);
 
@@ -96,7 +107,6 @@ const GridInspectNode = ({ data, id }) => {
   const [highlightRadioValue, setHighlightRadioValue] = useState([]);
   const [sentNum, setSentNum] = useState([]);
 
-  const [embeddings, setEmbeddings] = useState('');
 
 
   // Update the visualization whenever 'jsonResponses' changes:
@@ -107,14 +117,7 @@ const GridInspectNode = ({ data, id }) => {
     // === Construct a visualization using jsonResponses here ===
     // ....
 
-    // this is really slowing down the refresh rate; need to figure out
-    // where to put it...
-    fetch(embeddingsFilePath)
-      .then(response => response.text())
-      .then(data => {
-        let embdata = load_embeddings(data)
-        setEmbeddings(embdata);
-      });
+    
 
     console.log("similarity of dog and cat", cosine_similarity(embeddings["cat"], embeddings["dog"]));
     console.log("similarity of dog and table", cosine_similarity(embeddings["table"], embeddings["dog"]));

@@ -107,6 +107,8 @@ const GridInspectNode = ({ data, id }) => {
     // === Construct a visualization using jsonResponses here ===
     // ....
 
+    // this is really slowing down the refresh rate; need to figure out
+    // where to put it...
     fetch(embeddingsFilePath)
       .then(response => response.text())
       .then(data => {
@@ -240,9 +242,9 @@ const GridInspectNode = ({ data, id }) => {
 
         const m = X.length;
         const n = Y.length;
-         
+
         var LCSuff = Array(m + 1).fill().map(()=>Array(n + 1).fill(0));
- 
+
         // To store length of the longest common substring
         var result = 0;
 
@@ -250,7 +252,7 @@ const GridInspectNode = ({ data, id }) => {
         // This cell's index helps in building up the longest common substring 
         // from right to left.
         let row = 0, col = 0;
- 
+
         // Following steps build LCSuff[m+1][n+1] in bottom up fashion
         for (let i = 0; i <= m; i++) {
             for (let j = 0; j <= n; j++) {
@@ -280,20 +282,22 @@ const GridInspectNode = ({ data, id }) => {
         return {"string": resultStr, "x": row, "y": col};
     }
 
-    // responses is an array of responseTokenized; returns dict of overlapping 
-    // strings and their locations in the format:
-    // {"text of string": [
-    //      {i: index of response string occurs in, 
-    //       j: index of token in response where string starts,
-    //       n: number of tokens in string}
-    // ]}
+    /*
+       responses is an array of responseTokenized; returns dict of overlapping
+       strings and their locations in the format:
+       {"text of string": [
+            {i: index of response string occurs in,
+             j: index of token in response where string starts,
+             n: number of tokens in string}
+       ]}
+    */
     const findOverlap = (responses) => {
         let overlaps = {}
         for (let i = 0; i < responses.length-1; i++) {
             for (let j = i+1; j < responses.length; j++) {
                 let lcs = LCSubStr(responses[i], responses[j]);
                 if (!overlaps.hasOwnProperty(lcs.string)) {
-                    overlaps[lcs.string] = [] 
+                    overlaps[lcs.string] = []
                 }
                 overlaps[lcs.string].push({"i": i, "j": lcs.x, "n": lcs.string.length})
                 overlaps[lcs.string].push({"i": j, "j": lcs.y, "n": lcs.string.length})
@@ -302,6 +306,7 @@ const GridInspectNode = ({ data, id }) => {
         return overlaps;
     }
 
+    // defunct bc of moving to wink-nlp?
     const tokenize = (string) => {
         string = string.replaceAll("\n", " \n ");
         return string.split(" ");
@@ -372,7 +377,7 @@ const GridInspectNode = ({ data, id }) => {
     // console.log("tf-idf", example.map((arr) => [arr[0], arr[1]*idf_obj[arr[0]]]));
     // console.log("docBOWarray", docBowArray);
 
-    const topNTerms = (i, n) => { 
+    const topNTerms = (i, n) => {
         // this version calculate the tf-df for doc number i
         // then returns the top scoring n terms
         const tf = bm25.doc(i).out(its.tf);
@@ -392,7 +397,7 @@ const GridInspectNode = ({ data, id }) => {
 
     // parse sentences and create clusters
     // this is a shitty version. for each sentence in the first response
-    // find the n most similar sentences. so there is a "cluster" 
+    // find the n most similar sentences. so there is a "cluster"
     // for each sentence in the first response.
     const coreSentenceSet = jsonResponsesMod[0].sentences;
     const sentenceSimilarities = coreSentenceSet.map((coreSentObj) => {
@@ -469,17 +474,12 @@ const GridInspectNode = ({ data, id }) => {
     console.log('altValues', altValues);
 
     // calculate longest common substring for each pair
-
-    // let LCS = LCSubStr(gridResponses[0][0].responseTokenized, gridResponses[1][0].responseTokenized);
-    // console.log('LCS for', gridResponses[0][0].responseTokenized);
-    // console.log('and', gridResponses[1][0].responseTokenized);
-    // console.log('is', LCS);
-    // console.log("responses", gridResponses.map((row) => row.map((cell) => cell.responseTokenized)));
-
     const rowLCS = gridResponses.map((row) => findOverlap(row.map((cell) => cell.responseTokenized)));
     const colLCS = gridResponses[0].map((_, i) => findOverlap(gridResponses.map((row) => row[i].responseTokenized)));
+    const allLCS = findOverlap(gridResponses.flatMap(item => item).map(item => item.responseTokenized));
     console.log("rowLCS", rowLCS);
     console.log("colLCS", colLCS);
+    console.log("allLCS", allLCS);
 
 
     const rowNgrams = gridResponses.map((row) => selectNgrams(row.map((cell) => cell.responseTokenized), 5, 3));
@@ -487,6 +487,8 @@ const GridInspectNode = ({ data, id }) => {
     console.log('rowNgrams', rowNgrams);
     console.log('colNgrams', colNgrams);
 
+    // lcs highlighting uses the same functions as the old ngram ones
+    // because the detecting algorithms return the same output form
     const shouldHighlightRowNgrams = (rowIndex, cellIndex, tokenIndex) => {
         for (const [ngram, locations] of Object.entries(rowLCS[rowIndex])) {
             for (let l = 0; l < locations.length; l++) {
@@ -512,6 +514,20 @@ const GridInspectNode = ({ data, id }) => {
             }
         }
         return false;
+    }
+    const shouldHighlightAllNgrams = (rowIndex, cellIndex, tokenIndex) => {
+        const numCols = gridResponses[0].length;
+        for (const [ngram, locations] of Object.entries(allLCS)) {
+            for (let l=0; l<locations.length; l++) {
+                const thisIndex = (rowIndex * numCols) + cellIndex;
+                if (locations[l].i === thisIndex) {
+                    if (tokenIndex >= locations[l].j && tokenIndex < locations[l].j + locations[l].n) {
+                        return true;
+                    }
+                }
+            }
+        }
+        return false
     }
     const shouldHighlightTfidf = (cell, tokenIndex) => {
         if (tfidfArray[cell.index].includes(cell.responseTokenized[tokenIndex].toLowerCase())) {
@@ -552,6 +568,9 @@ const GridInspectNode = ({ data, id }) => {
                                 else if (highlightRadioValue === "col") { 
                                     highlight = shouldHighlightColNgrams(rowIndex, cellIndex, tokenIndex); 
                                     oddEven = cellIndex % 2 == 0;
+                                }
+                                else if (highlightRadioValue === "lcs") {
+                                    highlight = shouldHighlightAllNgrams(rowIndex, cellIndex, tokenIndex);
                                 }
                                 else if (highlightRadioValue === "tfidf") {
                                     highlight = shouldHighlightTfidf(cell, tokenIndex);

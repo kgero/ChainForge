@@ -117,7 +117,6 @@ const GridInspectNode = ({ data, id }) => {
     // === Construct a visualization using jsonResponses here ===
     // ....
 
-    
 
     console.log("similarity of dog and cat", cosine_similarity(embeddings["cat"], embeddings["dog"]));
     console.log("similarity of dog and table", cosine_similarity(embeddings["table"], embeddings["dog"]));
@@ -324,7 +323,9 @@ const GridInspectNode = ({ data, id }) => {
     let counterResp = 0;
     let jsonResponsesMod = jsonResponses.flatMap(obj =>
         obj.responses.map((response, index) => {
-            const doc = nlp.readDoc(response.replaceAll("\n", " <br/> "));
+            let cleanresponse = response.replaceAll("\n\n", " \n\n<br/><br/> ");
+            // const cleanresponse = response;
+            const doc = nlp.readDoc(cleanresponse);
             const sentencesOut = doc.sentences().out();
             const sentenceTokens = sentencesOut.map((text) => tokenize(text));
             const flatTokens = sentenceTokens.flat();
@@ -539,7 +540,11 @@ const GridInspectNode = ({ data, id }) => {
         return false;
     }
     const shouldHighlightSentence = (cell, tokenIndex) => {
+        console.log("sentNum", sentNum);
         if (sentNum == null || sentNum.length == 0) {
+            return false;
+        }
+        if (sentNum >= coreSentenceSet.length) {
             return false;
         }
         const clusterScores = bestSentenceSimilarities[parseInt(sentNum)];

@@ -259,8 +259,8 @@ const GridInspectNode = ({ data, id }) => {
         // To store length of the longest common substring
         var result = 0;
 
-        // To store the index of the cell which contains the maximum value. 
-        // This cell's index helps in building up the longest common substring 
+        // To store the index of the cell which contains the maximum value.
+        // This cell's index helps in building up the longest common substring
         // from right to left.
         let row = 0, col = 0;
 
@@ -310,14 +310,63 @@ const GridInspectNode = ({ data, id }) => {
         for (let i = 0; i < responses.length-1; i++) {
             for (let j = i+1; j < responses.length; j++) {
                 let lcs = LCSubStr(responses[i], responses[j]);
-                if (!overlaps.hasOwnProperty(lcs.string)) {
-                    overlaps[lcs.string] = []
+                // check if lcs crosses sentence boundary
+                // either return final object or two final objects to add
+                const crossSentBoundary = (respIndex, tokenIndex, numTokens, lcsString) => {
+                    // console.log("crossSentBoundary", respIndex, tokenIndex, numTokens, lcsString);
+                    const sentObj = jsonResponsesMod[respIndex].sentences;
+                    // console.log("sentObj", sentObj);
+                    for (let k=0; k < sentObj.length; k++) {
+                        // console.log("sentObj[k]", sentObj[k]);
+                        if (!sentObj[k].tokenIndices.includes(tokenIndex)) {
+                            continue;
+                        } else if (sentObj[k].tokenIndices.includes(tokenIndex+numTokens)) {
+                            // doesn't cross sentence boundary
+                            return [{"i": respIndex, "j": tokenIndex, "n": numTokens, "str": lcsString}];
+                        } else {
+                            // console.log("crossing", k, tokenIndex, numTokens, lcsString);
+                            const firstN = sentObj[k].tokenIndices.length - sentObj[k].tokenIndices.indexOf(tokenIndex);
+                            const secondN = numTokens - firstN;
+                            const secondTokenIndex = sentObj[k+1].tokenIndices[0];
+                            const firstString = jsonResponsesMod[respIndex].responseTokenized.slice(tokenIndex, tokenIndex + firstN);
+                            const secondString = jsonResponsesMod[respIndex].responseTokenized.slice(secondTokenIndex, secondTokenIndex + secondN);
+                            // console.log('crossSentBoundary', k, lcsString, firstN, secondN);
+                            return [
+                                {"i": respIndex, "j": tokenIndex, "n": firstN, "str": firstString},
+                                {"i": respIndex, "j": secondTokenIndex, "n": secondN, "str": secondString}
+                                ];
+                        }
+                    }
+
                 }
-                overlaps[lcs.string].push({"i": i, "j": lcs.x, "n": lcs.string.length})
-                overlaps[lcs.string].push({"i": j, "j": lcs.y, "n": lcs.string.length})
+                const firstAdd = crossSentBoundary(i, lcs.x, lcs.string.length, lcs.string);
+                const secondAdd = crossSentBoundary(j, lcs.y, lcs.string.length, lcs.string);
+                const adds = firstAdd.concat(secondAdd);
+                // console.log("adds", adds);
+
+                for (let a=0; a<adds.length; a++) {
+                    if (!overlaps.hasOwnProperty(adds[a].str)) {
+                        overlaps[adds[a].str] = [];
+                    }
+                    overlaps[adds[a].str].push(adds[a])
+                }
+
+                // Old implementation before breaking on sentence boundaries
+
+                // if (!overlaps.hasOwnProperty(lcs.string)) {
+                //     overlaps[lcs.string] = []
+                // }
+                // overlaps[lcs.string].push({"i": i, "j": lcs.x, "n": lcs.string.length})
+                // overlaps[lcs.string].push({"i": j, "j": lcs.y, "n": lcs.string.length})
+                // overlaps[lcs.string]
             }
         }
-
+        for (const key in overlaps) {
+            if (overlaps[key].length === 1) {
+                delete overlaps[key];
+            }
+        }
+        console.log("overlaps", overlaps);
         // Convert to [key, value] pairs and calculate max n for each overlap
         let pairs = Object.entries(overlaps).map(([string, locations]) => {
             let maxN = Math.max(...locations.map((location) => location.n));
@@ -495,7 +544,7 @@ const GridInspectNode = ({ data, id }) => {
             return sentenceDetails
         })
     }).flat();
-    console.log("allSentences", allSentences);
+    // console.log("allSentences", allSentences);
 
     // then make a similarity matrix
     const n = allSentences.length;
@@ -506,7 +555,7 @@ const GridInspectNode = ({ data, id }) => {
             simMatrix[i][j] = sim;
         }
     }
-    console.log("simMatrix", simMatrix);
+    // console.log("simMatrix", simMatrix);
 
     // run clustering algo
     let clusters = [];
@@ -547,8 +596,6 @@ const GridInspectNode = ({ data, id }) => {
         let inCluster1 = checkInCluster(clusters, maxPair[1]);
 
         const clusterCopy = clusters.map((cluster) => cluster.slice())
-        // console.log('cluster iteration:', clusterCopy);
-        // console.log(maxVal, maxPair, inCluster0, inCluster1);
         if (inCluster0 == null && inCluster1 == null) {
             // make new cluster
             clusters.push(maxPair);
@@ -621,12 +668,13 @@ const GridInspectNode = ({ data, id }) => {
     console.log('altValues', altValues);
 
     // calculate longest common substring for each pair
-    const rowLCS = gridResponses.map((row) => findOverlap(row.map((cell) => cell.responseTokenized), 5));
-    const colLCS = gridResponses[0].map((_, i) => findOverlap(gridResponses.map((row) => row[i].responseTokenized), 5));
-    const allLCS = findOverlap(gridResponses.flatMap(item => item).map(item => item.responseTokenized), 5);
+    // const rowLCS = gridResponses.map((row) => findOverlap(row.map((cell) => cell.responseTokenized), 5));
+    // const colLCS = gridResponses[0].map((_, i) => findOverlap(gridResponses.map((row) => row[i].responseTokenized), 5));
+    // const allLCS = findOverlap(gridResponses.flatMap(item => item).map(item => item.responseTokenized), 5);
+    const allLCS = findOverlap(jsonResponsesMod.map(item => item.responseTokenized), 5);
     const allLCS_colors = getColors(allLCS);
-    console.log("rowLCS", rowLCS);
-    console.log("colLCS", colLCS);
+    // console.log("rowLCS", rowLCS);
+    // console.log("colLCS", colLCS);
     console.log("allLCS", allLCS);
     console.log("allLCS_colors", allLCS_colors);
 
@@ -638,38 +686,36 @@ const GridInspectNode = ({ data, id }) => {
 
     // lcs highlighting uses the same functions as the old ngram ones
     // because the detecting algorithms return the same output form
-    const shouldHighlightRowNgrams = (rowIndex, cellIndex, tokenIndex) => {
-        for (const [ngram, locations] of Object.entries(rowLCS[rowIndex])) {
-            for (let l = 0; l < locations.length; l++) {
-              if (locations[l].i === cellIndex) {
-                // if this ngram occurs in this string
-                if (tokenIndex >= locations[l].j && tokenIndex < locations[l].j + locations[l].n) {
-                    return true;
-                }
-              }
-            }
-        }
-        return false;
-    }
-    const shouldHighlightColNgrams = (rowIndex, cellIndex, tokenIndex) => {
-        for (const [ngram, locations] of Object.entries(colLCS[cellIndex])) {
-            for (let l = 0; l < locations.length; l++) {
-              if (locations[l].i === rowIndex) {
-                // if this ngram occurs in this string
-                if (tokenIndex >= locations[l].j && tokenIndex < locations[l].j + locations[l].n) {
-                    return true;
-                }
-              }
-            }
-        }
-        return false;
-    }
-    const shouldHighlightAllNgrams = (rowIndex, cellIndex, tokenIndex) => {
-        const numCols = gridResponses[0].length;
+    // const shouldHighlightRowNgrams = (rowIndex, cellIndex, tokenIndex) => {
+    //     for (const [ngram, locations] of Object.entries(rowLCS[rowIndex])) {
+    //         for (let l = 0; l < locations.length; l++) {
+    //           if (locations[l].i === cellIndex) {
+    //             // if this ngram occurs in this string
+    //             if (tokenIndex >= locations[l].j && tokenIndex < locations[l].j + locations[l].n) {
+    //                 return true;
+    //             }
+    //           }
+    //         }
+    //     }
+    //     return false;
+    // }
+    // const shouldHighlightColNgrams = (rowIndex, cellIndex, tokenIndex) => {
+    //     for (const [ngram, locations] of Object.entries(colLCS[cellIndex])) {
+    //         for (let l = 0; l < locations.length; l++) {
+    //           if (locations[l].i === rowIndex) {
+    //             // if this ngram occurs in this string
+    //             if (tokenIndex >= locations[l].j && tokenIndex < locations[l].j + locations[l].n) {
+    //                 return true;
+    //             }
+    //           }
+    //         }
+    //     }
+    //     return false;
+    // }
+    const shouldHighlightAllNgrams = (cell, tokenIndex) => {
         for (const [ngram, locations] of Object.entries(allLCS)) {
             for (let l=0; l<locations.length; l++) {
-                const thisIndex = (rowIndex * numCols) + cellIndex;
-                if (locations[l].i === thisIndex) {
+                if (locations[l].i === cell.index) {
                     if (tokenIndex >= locations[l].j && tokenIndex < locations[l].j + locations[l].n) {
                         return [true, allLCS_colors[ngram]];
                     }
@@ -741,16 +787,8 @@ const GridInspectNode = ({ data, id }) => {
                                 let highlight = false; 
                                 let oddEven = false;
                                 let color = null;
-                                if (highlightRadioValue === "row") { 
-                                    highlight = shouldHighlightRowNgrams(rowIndex, cellIndex, tokenIndex); 
-                                    oddEven = rowIndex % 2 == 0;
-                                }
-                                else if (highlightRadioValue === "col") { 
-                                    highlight = shouldHighlightColNgrams(rowIndex, cellIndex, tokenIndex); 
-                                    oddEven = cellIndex % 2 == 0;
-                                }
-                                else if (highlightRadioValue === "lcs") {
-                                    [highlight, color] = shouldHighlightAllNgrams(rowIndex, cellIndex, tokenIndex);
+                                if (highlightRadioValue === "lcs") {
+                                    [highlight, color] = shouldHighlightAllNgrams(cell, tokenIndex);
                                 }
                                 else if (highlightRadioValue === "tfidf") {
                                     [highlight, color] = shouldHighlightTfidf(cell, tokenIndex);
@@ -879,9 +917,7 @@ const GridInspectNode = ({ data, id }) => {
                 >
                   <Group mt="xs">
                     <Radio value="none" label="None" />
-                    <Radio value="row" label="Exact Matches (Rows)" />
-                    <Radio value="col" label="Exact Matches (Columns)" />
-                    <Radio value="lcs" label="Exact Matches (All)" />
+                    <Radio value="lcs" label="Exact Matches" />
                     <Radio value="tfidf" label="Unique Words" />
                     <Radio value="sent" label="Similar Sentences" />
                   </Group>

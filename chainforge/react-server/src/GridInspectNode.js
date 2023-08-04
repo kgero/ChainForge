@@ -418,7 +418,7 @@ const GridInspectNode = ({ data, id }) => {
             const sentences = [...Array(sentencesOut.length).keys()].map((i) => ({
                 text: sentencesOut[i],
                 tokenIndices: indices[i],
-                bow: nlp.readDoc(sentencesOut[i]).tokens().out(its.value, as.bow)
+                bow: nlp.readDoc(sentencesOut[i].replaceAll("<br/>", "")).tokens().out(its.value, as.bow)
             }));
             let currObj = {
                 ...obj,
@@ -473,34 +473,103 @@ const GridInspectNode = ({ data, id }) => {
     // console.log("docBowArray[0]", docBowArray[0]);
     // console.log("topNTerms", topNTerms(0, 5) );
 
-    // parse sentences and create clusters
-    // this is a shitty version. for each sentence in the first response
-    // find the n most similar sentences. so there is a "cluster"
-    // for each sentence in the first response.
-    const coreSentenceSet = jsonResponsesMod[0].sentences;
-    const sentenceSimilarities = coreSentenceSet.map((coreSentObj) => {
-        // for each "cluster" (i.e. sentence in first response)
-        // we will create an array of arrays
-        // where each item in the array represents one response
-        return jsonResponsesMod.map((respObj) => {
-            // for each response we create an array of scores
-            // where the scores represent the similarity between
-            // that sentence and the core sentence we are looking at
-            return respObj.sentences.map((thisSentObj) => {
-                return similarity.bow.cosine(coreSentObj.bow, thisSentObj.bow);
-            })
+
+    /*  SIMPLE AGGLOMERATIVE CLUSTERING
+        Calculate matrix of similarity scores between all sentences.
+        Find most similar two sentences; make them the first cluster.
+        Find next most similar two sentences:
+            Either add to first cluster, or make them the second cluster.
+        Find next most similar two sentences:
+            Either add to a cluster, merge two clustesr, or make a new cluster.
+        Repeat until n clusters or sentences too similar.
+    */
+    // First make a list of all sentences
+    const allSentences = jsonResponsesMod.map((respObj) => {
+        return respObj.sentences.map((sentObj, idx) => {
+            const sentenceDetails = {
+                bow: sentObj.bow,
+                respIndex: respObj.index,
+                sentIndex: idx,
+                sentence: sentObj.text
+            }
+            return sentenceDetails
         })
-    });
-    console.log("coreSentenceSet", coreSentenceSet.map((obj) => obj.text));
-    console.log("sentenceSimilarities", sentenceSimilarities);
-    const bestSentenceSimilarities = sentenceSimilarities.map((cluster) => {
-        return cluster.map((scoreList) => {
-            // index of max value
-            // from https://stackoverflow.com/questions/11301438/return-index-of-greatest-value-in-an-array
-            return scoreList.reduce((iMax, x, i, arr) => x > arr[iMax] ? i : iMax, 0);
-        })
-    });
-    console.log("bestSentenceSimilarities", bestSentenceSimilarities);
+    }).flat();
+    console.log("allSentences", allSentences);
+
+    // then make a similarity matrix
+    const n = allSentences.length;
+    let simMatrix = Array(n).fill(0).map(() => Array(n).fill(0));
+    for (let i=0; i<n; i++) {
+        for (let j=0; j<i; j++) {
+            const sim = similarity.bow.cosine(allSentences[i].bow, allSentences[j].bow);
+            simMatrix[i][j] = sim;
+        }
+    }
+    console.log("simMatrix", simMatrix);
+
+    // run clustering algo
+    let clusters = [];
+    const getMaxIndices = (arr) => {
+        let max = -Infinity;
+        let indices = [];
+        for (let i=0; i<arr.length; i++) {
+            for (let j=0; j<i; j++) {
+                if (arr[i][j] > max) {
+                    max = arr[i][j];
+                    indices = [i,j];
+                }
+            }
+        }
+        return [max, indices];
+    }
+    const checkInCluster = (clusters, i) => {
+        for (let k=0; k<clusters.length; k++) {
+            if (clusters[k].includes(i)) {
+                return k;
+            }
+        }
+        return null;
+    }
+    let maxVal; let maxPair;
+    [maxVal, maxPair] = getMaxIndices(simMatrix);
+    clusters.push(maxPair);
+    simMatrix[maxPair[0]][maxPair[1]] = 0;
+
+    const simThreshold = 0.6;
+    let clusterPrintOut = []
+    while (maxVal > simThreshold) {
+        [maxVal, maxPair] = getMaxIndices(simMatrix);
+
+        simMatrix[maxPair[0]][maxPair[1]] = 0;
+        // options: add to cluster, merge two clusters, or create new cluster
+        let inCluster0 = checkInCluster(clusters, maxPair[0]);
+        let inCluster1 = checkInCluster(clusters, maxPair[1]);
+
+        const clusterCopy = clusters.map((cluster) => cluster.slice())
+        // console.log('cluster iteration:', clusterCopy);
+        // console.log(maxVal, maxPair, inCluster0, inCluster1);
+        if (inCluster0 == null && inCluster1 == null) {
+            // make new cluster
+            clusters.push(maxPair);
+        } else if (inCluster0 == null && inCluster1 !== null) {
+            // add to cluster
+            clusters[inCluster1].push(maxPair[0]);
+        } else if (inCluster0 !== null && inCluster1 == null) {
+            // add to cluster
+            clusters[inCluster0].push(maxPair[1]);
+        } else if (inCluster0 !== inCluster1) {
+            // merge clusters
+            clusters[inCluster0] = clusters[inCluster0].concat(clusters[inCluster1])
+            clusters.splice(inCluster1, 1)
+        }
+    }
+
+
+    for (let k=0; k<clusters.length; k++) {
+        const clusterSentences = clusters[k].map((index) => [index, allSentences[index].sentence]);
+        console.log("cluster", k, clusterSentences);
+    }
 
 
 
@@ -620,19 +689,41 @@ const GridInspectNode = ({ data, id }) => {
         return [false, null];
     }
     const shouldHighlightSentence = (cell, tokenIndex) => {
-        console.log("sentNum", sentNum);
-        if (sentNum == null || sentNum.length == 0) {
-            return false;
+        if (cell.sentences == undefined) {
+            return [false, null];
         }
-        if (sentNum >= coreSentenceSet.length) {
-            return false;
+
+        // first get the sentence index of the token
+        let sentIndex;
+        for (let i=0; i<cell.sentences.length; i++) {
+            if (cell.sentences[i].tokenIndices.includes(tokenIndex)) {
+                sentIndex = i;
+                break;
+            }
         }
-        const clusterScores = bestSentenceSimilarities[parseInt(sentNum)];
-        const bestSentenceIndex = clusterScores[cell.index];
-        if (cell.sentences[bestSentenceIndex].tokenIndices.includes(tokenIndex)) {
-            return true;
+        // then get the sentence id from allSentences
+        let sentId;
+        for (let i=0; i<allSentences.length; i++) {
+            if (allSentences[i].respIndex == cell.index && allSentences[i].sentIndex == sentIndex) {
+                sentId = i;
+                break;
+            }
         }
-        return false;
+
+        // then check if sentId is in a cluster
+        let clusterId = null;
+        for (let i=0; i<clusters.length; i++) {
+            if (clusters[i].includes(sentId)) {
+                clusterId = i;
+                break;
+            }
+        }
+
+        if (clusterId !== null) {
+            return [true, llmColorPalette[clusterId]]
+        }
+
+        return [false, null];
     }
 
 
@@ -665,7 +756,7 @@ const GridInspectNode = ({ data, id }) => {
                                     [highlight, color] = shouldHighlightTfidf(cell, tokenIndex);
                                 }
                                 else if (highlightRadioValue === "sent") {
-                                    highlight = shouldHighlightSentence(cell, tokenIndex);
+                                    [highlight, color] = shouldHighlightSentence(cell, tokenIndex);
                                 }
                                 let spanStyle = highlight ? {backgroundColor: oddEven ? 'thistle' : 'plum'} : {};
                                 if (color) {

@@ -15,7 +15,8 @@ table.outputgrid {
 
   }
 td {
-	border: 1px solid blue;
+	border: 0.0625rem solid #228be6;
+	border-radius: 0.25rem;
 	min-width: 170px;
 	min-height: 170px;
 	padding: 30px 10px 30px 10px;
@@ -28,4 +29,8 @@ td {
 p.prompt {
 	text-align: center;
 	font-weight: bold;
+}
+
+.display-linebreak {
+  white-space: pre-line;
 }

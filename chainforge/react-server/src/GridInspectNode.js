@@ -3,7 +3,7 @@ import { Handle } from 'react-flow-renderer';
 import useStore from './store';
 import NodeLabel from './NodeLabelComponent'
 import {BASE_URL} from './store';
-import { Grid, Select, Radio, NumberInput, Group } from '@mantine/core';
+import { Container, Grid, Select, Radio, NumberInput, Group, Paper, Text, Accordion } from '@mantine/core';
 import './output-grid.css';
 
 import embeddingsFilePath from './nlp_models/glove.6B.50d.10k.txt';
@@ -17,6 +17,15 @@ const nlp = winkNLP(winkModel);
 const its = nlp.its;
 const as = nlp.as;
 
+
+// from https://github.com/ianarawjo/ChainForge/blob/main/chainforge/react-server/src/store.js
+/** The color palette used for displaying info about different LLMs. */
+const llmColorPalette = ['#44d044', '#f1b933', '#e46161', '#8888f9', '#33bef0', '#bb55f9', '#f7ee45', '#f955cd', '#26e080', '#2654e0', '#7d8191', '#bea5d1'];
+
+/** The color palette used for displaying variations of prompts and prompt variables (non-LLM differences). 
+ * Distinct from the LLM color palette in order to avoid confusion around what the data means.
+ * Palette adapted from https://lospec.com/palette-list/sness by Space Sandwich */
+const varColorPalette = ['#0bdb52', '#e71861', '#7161de', '#f6d714', '#80bedb', '#ffa995', '#a9b399', '#dc6f0f', '#8d022e', '#138e7d', '#c6924f', '#885818', '#616b6d'];
 
 // inspired by https://github.com/sauravjoshi23/GloVe-Embeddings-NLP-JS/tree/master
 // returns an object where each key is a word and the value is the vector
@@ -285,15 +294,18 @@ const GridInspectNode = ({ data, id }) => {
     }
 
     /*
-       responses is an array of responseTokenized; returns dict of overlapping
-       strings and their locations in the format:
+       responses is an array of responseTokenized;
+       k is the number of unique text strings to return;
+
+       returns dict of overlapping strings and their locations in the format:
+
        {"text of string": [
             {i: index of response string occurs in,
              j: index of token in response where string starts,
              n: number of tokens in string}
        ]}
     */
-    const findOverlap = (responses) => {
+    const findOverlap = (responses, k) => {
         let overlaps = {}
         for (let i = 0; i < responses.length-1; i++) {
             for (let j = i+1; j < responses.length; j++) {
@@ -305,7 +317,69 @@ const GridInspectNode = ({ data, id }) => {
                 overlaps[lcs.string].push({"i": j, "j": lcs.y, "n": lcs.string.length})
             }
         }
-        return overlaps;
+
+        // Convert to [key, value] pairs and calculate max n for each overlap
+        let pairs = Object.entries(overlaps).map(([string, locations]) => {
+            let maxN = Math.max(...locations.map((location) => location.n));
+            let count = locations.length;
+            return [string, locations, maxN, count];
+        });
+
+        // Sort by max n, in descending order, then by count, also in descending order
+        pairs.sort((a, b) => b[2] - a[2] || b[3] - a[3]);
+
+        // Get top k overlaps
+        let topKoverlaps = {};
+        let blockedIndices = Array(responses.length)
+            .fill()
+            .map(() => new Set());
+
+        for (let i = 0; i < pairs.length; ++i) {
+            const [string, locations] = pairs[i];
+
+            if (locations.length === 1) {
+              continue;
+            }
+
+            // check if a string is overlapping with an already-added string
+            let overlapped = false;
+
+            for (const location of locations) {
+              for (let idx = location.j; idx < location.j + location.n; idx++) {
+                if (blockedIndices[location.i].has(idx)) {
+                  overlapped = true;
+                  break;
+                }
+              }
+              if (overlapped) break;
+            }
+
+            if (!overlapped) {
+              topKoverlaps[string] = locations;
+              if (Object.keys(topKoverlaps).length === k) break;
+
+              for (const location of locations) {
+                for (let idx = location.j; idx < location.j + location.n; idx++) {
+                  blockedIndices[location.i].add(idx);
+                }
+              }
+            }
+        }
+
+
+        return topKoverlaps;
+    }
+
+    // return a new json object where the keys are the same as the input
+    // json and the values are unique hex colors based on llmColorPalette
+    const getColors = (json) => {
+        let colors = {};
+        let counter = 0;
+        for (const key in json) {
+            colors[key] = llmColorPalette[counter];
+            counter++;
+        }
+        return colors;
     }
 
     // defunct bc of moving to wink-nlp?
@@ -478,12 +552,14 @@ const GridInspectNode = ({ data, id }) => {
     console.log('altValues', altValues);
 
     // calculate longest common substring for each pair
-    const rowLCS = gridResponses.map((row) => findOverlap(row.map((cell) => cell.responseTokenized)));
-    const colLCS = gridResponses[0].map((_, i) => findOverlap(gridResponses.map((row) => row[i].responseTokenized)));
-    const allLCS = findOverlap(gridResponses.flatMap(item => item).map(item => item.responseTokenized));
+    const rowLCS = gridResponses.map((row) => findOverlap(row.map((cell) => cell.responseTokenized), 5));
+    const colLCS = gridResponses[0].map((_, i) => findOverlap(gridResponses.map((row) => row[i].responseTokenized), 5));
+    const allLCS = findOverlap(gridResponses.flatMap(item => item).map(item => item.responseTokenized), 5);
+    const allLCS_colors = getColors(allLCS);
     console.log("rowLCS", rowLCS);
     console.log("colLCS", colLCS);
     console.log("allLCS", allLCS);
+    console.log("allLCS_colors", allLCS_colors);
 
 
     const rowNgrams = gridResponses.map((row) => selectNgrams(row.map((cell) => cell.responseTokenized), 5, 3));
@@ -526,18 +602,22 @@ const GridInspectNode = ({ data, id }) => {
                 const thisIndex = (rowIndex * numCols) + cellIndex;
                 if (locations[l].i === thisIndex) {
                     if (tokenIndex >= locations[l].j && tokenIndex < locations[l].j + locations[l].n) {
-                        return true;
+                        return [true, allLCS_colors[ngram]];
                     }
                 }
             }
         }
-        return false
+        return [false, null];
     }
     const shouldHighlightTfidf = (cell, tokenIndex) => {
         if (tfidfArray[cell.index].includes(cell.responseTokenized[tokenIndex].toLowerCase())) {
-            return true;
+            let colorIndex = cell.index;
+            if (colorIndex >= llmColorPalette.length) {
+                colorIndex = colorIndex - llmColorPalette.length;
+            }
+            return [true, llmColorPalette[colorIndex]];
         }
-        return false;
+        return [false, null];
     }
     const shouldHighlightSentence = (cell, tokenIndex) => {
         console.log("sentNum", sentNum);
@@ -558,8 +638,8 @@ const GridInspectNode = ({ data, id }) => {
 
     col_names.unshift(""); // add empty string for row headers
     const header = col_names.map((el) => {
-            return <th>{el}</th>
-        });
+        return <th>{el}</th>
+    });
     const cells = gridResponses.map((row, rowIndex) => {
         return (
             <tr>
@@ -569,6 +649,7 @@ const GridInspectNode = ({ data, id }) => {
                             {cell.responseTokenized.map((token, tokenIndex) => {
                                 let highlight = false; 
                                 let oddEven = false;
+                                let color = null;
                                 if (highlightRadioValue === "row") { 
                                     highlight = shouldHighlightRowNgrams(rowIndex, cellIndex, tokenIndex); 
                                     oddEven = rowIndex % 2 == 0;
@@ -578,15 +659,19 @@ const GridInspectNode = ({ data, id }) => {
                                     oddEven = cellIndex % 2 == 0;
                                 }
                                 else if (highlightRadioValue === "lcs") {
-                                    highlight = shouldHighlightAllNgrams(rowIndex, cellIndex, tokenIndex);
+                                    [highlight, color] = shouldHighlightAllNgrams(rowIndex, cellIndex, tokenIndex);
                                 }
                                 else if (highlightRadioValue === "tfidf") {
-                                    highlight = shouldHighlightTfidf(cell, tokenIndex);
+                                    [highlight, color] = shouldHighlightTfidf(cell, tokenIndex);
                                 }
                                 else if (highlightRadioValue === "sent") {
                                     highlight = shouldHighlightSentence(cell, tokenIndex);
                                 }
-                                const spanStyle = highlight ? {backgroundColor: oddEven ? 'thistle' : 'plum'} : {};
+                                let spanStyle = highlight ? {backgroundColor: oddEven ? 'thistle' : 'plum'} : {};
+                                if (color) {
+                                    spanStyle = {backgroundColor: color}
+                                }
+
                                 if (token == "<br/>") {return <br/>;}
                                 if (token == "<br/><br/>") {return <><br/><br/></>;}
                                 return <span key={tokenIndex} style={spanStyle}>{token} </span>;;
@@ -637,8 +722,9 @@ const GridInspectNode = ({ data, id }) => {
         // get the actual options for this value
         let these_options = [...new Set(jsonResponsesMod.map((obj) => obj.vars[alt_value]))];
         return (
-            <Grid.Col span={2}>
+            <Grid.Col span={3}>
                 <Select
+                  size="xs"
                   onChange={(value) => handleAltValuesChange(value, alt_value)}
                   label={alt_value}
                   placeholder="Pick one"
@@ -651,63 +737,62 @@ const GridInspectNode = ({ data, id }) => {
     });
 
     // Set the HTML / React element
-    const my_vis_component = (<div>
-        
+    const my_vis_component = (<Container fluid="true">
         <Grid>
-            <Grid.Col span={2}>
-            <p>Set table dimensions:</p>
-            </Grid.Col>
-            <Grid.Col span={2}>
-                <Select clearable
-                  onChange={handleColumnValueChange}
-                  label="Columns"
-                  placeholder="Pick one"
-                  defaultValue="Model"
-                  data={tab_options}
-                  value={columnValue}
-                />
-            </Grid.Col>
-            <Grid.Col span={2}>
-                <Select clearable
-                  onChange={handleRowValueChange}
-                  label="Rows"
-                  placeholder="Pick one"
-                  defaultValue="Model"
-                  data={tab_options}
-                  value={rowValue}
-                />
-            </Grid.Col>
             
-        </Grid>
-        <p></p>
-        
-        <Grid>
-            <Grid.Col span={2}>
-                <p>Select which extra variables to view:</p>
+            <Grid.Col span={4} style={{backgroundColor: '#eee', borderRadius: '5px', margin: '10px'}}>
+                <div style={{fontSize: '10pt', color: '#777'}}>Set table dimensions:</div>
+                <Grid>
+                    <Grid.Col span={6}>
+                        <Select clearable
+                          size="xs"
+                          onChange={handleColumnValueChange}
+                          label="Columns"
+                          placeholder="Pick one"
+                          defaultValue="Model"
+                          data={tab_options}
+                          value={columnValue}
+                        />
+                    </Grid.Col>
+                    <Grid.Col span={6}>
+                        <Select clearable
+                          size="xs"
+                          onChange={handleRowValueChange}
+                          label="Rows"
+                          placeholder="Pick one"
+                          defaultValue="Model"
+                          data={tab_options}
+                          value={rowValue}
+                        />
+                    </Grid.Col>
+                </Grid>
             </Grid.Col>
-            {alt_select_obj}
+            <Grid.Col span={7} style={{backgroundColor: '#eee', borderRadius: '5px', margin: '10px'}}>
+                <div style={{fontSize: '10pt', color: '#777'}}>Set extra dimensions:</div>
+                <Grid>
+                    {alt_select_obj}
+                </Grid>
+            </Grid.Col>
         </Grid>
         <p></p>
 
+        <div style={{fontSize: '10pt', color: '#777'}}>Select what to highlight:</div>
         <Grid>
-            <Grid.Col span={2}>
-                <p>Select what to highlight:</p>
-            </Grid.Col>
+
             <Grid.Col span={10}>
                 <Radio.Group
                   value={highlightRadioValue}
                   onChange={handleHighlightRadioValue}
                   name="highlightRadioValue"
                   defaultValue="none"
-                  // label="Select what you would like to highlight"
                 >
                   <Group mt="xs">
                     <Radio value="none" label="None" />
-                    <Radio value="row" label="LCS in Rows" />
-                    <Radio value="col" label="LCS in Columns" />
-                    <Radio value="lcs" label="LCS in all" />
-                    <Radio value="tfidf" label="High tf-idf" />
-                    <Radio value="sent" label="Similar sentences" />
+                    <Radio value="row" label="Exact Matches (Rows)" />
+                    <Radio value="col" label="Exact Matches (Columns)" />
+                    <Radio value="lcs" label="Exact Matches (All)" />
+                    <Radio value="tfidf" label="Unique Words" />
+                    <Radio value="sent" label="Similar Sentences" />
                   </Group>
                 </Radio.Group>
             </Grid.Col>
@@ -727,7 +812,14 @@ const GridInspectNode = ({ data, id }) => {
             </Grid.Col>
         </Grid>
 
-        <p class="prompt">{prompt}</p>
+        <Accordion variant="contained" defaultValue="" chevronPosition="left" chevronSize="15px" style={{margin: '20px'}}>
+          <Accordion.Item value="prompt">
+            <Accordion.Control style={{fontSize: '10pt', fontWeight: '400 !important'}}>Show prompt:</Accordion.Control>
+            <Accordion.Panel style={{fontSize: '10pt', whiteSpace: 'pre-line'}}>{prompt}</Accordion.Panel>
+          </Accordion.Item>
+        </Accordion>
+
+        
         
         <table class='outputgrid'>
             <tbody>
@@ -735,9 +827,7 @@ const GridInspectNode = ({ data, id }) => {
                 {cells}
             </tbody>
         </table>
-        <div>Hello! The response JSON I received is:
-                                <p style={{fontSize: '9pt'}}>{JSON.stringify(jsonResponses)}</p>
-                             </div></div>);  // replace with your own
+        </Container>);  // replace with your own
     setVisualization(my_vis_component);
 
   }, [columnValue, rowValue, altValues, highlightRadioValue, jsonResponses, sentNum]);

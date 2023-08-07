@@ -527,86 +527,90 @@ const GridInspectNode = ({ data, id }) => {
             Either add to a cluster, merge two clustesr, or make a new cluster.
         Repeat until n clusters or sentences too similar.
     */
-    // First make a list of all sentences
-    const allSentences = jsonResponsesMod.map((respObj) => {
-        return respObj.sentences.map((sentObj, idx) => {
-            const sentenceDetails = {
-                bow: sentObj.bow,
-                respIndex: respObj.index,
-                sentIndex: idx,
-                sentence: sentObj.text
-            }
-            return sentenceDetails
-        })
-    }).flat();
-    // console.log("allSentences", allSentences);
+    const getClusters = () => {
+        // First make a list of all sentences
+        const allSentences = jsonResponsesMod.map((respObj) => {
+            return respObj.sentences.map((sentObj, idx) => {
+                const sentenceDetails = {
+                    bow: sentObj.bow,
+                    respIndex: respObj.index,
+                    sentIndex: idx,
+                    sentence: sentObj.text
+                }
+                return sentenceDetails
+            })
+        }).flat();
+        // console.log("allSentences", allSentences);
 
-    // then make a similarity matrix
-    const n = allSentences.length;
-    let simMatrix = Array(n).fill(0).map(() => Array(n).fill(0));
-    for (let i=0; i<n; i++) {
-        for (let j=0; j<i; j++) {
-            const sim = similarity.bow.cosine(allSentences[i].bow, allSentences[j].bow);
-            simMatrix[i][j] = sim;
-        }
-    }
-    // console.log("simMatrix", simMatrix);
-
-    // run clustering algo
-    let clusters = [];
-    const getMaxIndices = (arr) => {
-        let max = -Infinity;
-        let indices = [];
-        for (let i=0; i<arr.length; i++) {
+        // then make a similarity matrix
+        const n = allSentences.length;
+        let simMatrix = Array(n).fill(0).map(() => Array(n).fill(0));
+        for (let i=0; i<n; i++) {
             for (let j=0; j<i; j++) {
-                if (arr[i][j] > max) {
-                    max = arr[i][j];
-                    indices = [i,j];
+                const sim = similarity.bow.cosine(allSentences[i].bow, allSentences[j].bow);
+                simMatrix[i][j] = sim;
+            }
+        }
+        // console.log("simMatrix", simMatrix);
+
+        // run clustering algo
+        let clusters = [];
+        const getMaxIndices = (arr) => {
+            let max = -Infinity;
+            let indices = [];
+            for (let i=0; i<arr.length; i++) {
+                for (let j=0; j<i; j++) {
+                    if (arr[i][j] > max) {
+                        max = arr[i][j];
+                        indices = [i,j];
+                    }
                 }
             }
+            return [max, indices];
         }
-        return [max, indices];
-    }
-    const checkInCluster = (clusters, i) => {
-        for (let k=0; k<clusters.length; k++) {
-            if (clusters[k].includes(i)) {
-                return k;
+        const checkInCluster = (clusters, i) => {
+            for (let k=0; k<clusters.length; k++) {
+                if (clusters[k].includes(i)) {
+                    return k;
+                }
+            }
+            return null;
+        }
+        let maxVal; let maxPair;
+        [maxVal, maxPair] = getMaxIndices(simMatrix);
+        clusters.push(maxPair);
+        simMatrix[maxPair[0]][maxPair[1]] = 0;
+
+        const simThreshold = 0.6;
+        let clusterPrintOut = []
+        while (maxVal > simThreshold) {
+            [maxVal, maxPair] = getMaxIndices(simMatrix);
+
+            simMatrix[maxPair[0]][maxPair[1]] = 0;
+            // options: add to cluster, merge two clusters, or create new cluster
+            let inCluster0 = checkInCluster(clusters, maxPair[0]);
+            let inCluster1 = checkInCluster(clusters, maxPair[1]);
+
+            const clusterCopy = clusters.map((cluster) => cluster.slice())
+            if (inCluster0 == null && inCluster1 == null) {
+                // make new cluster
+                clusters.push(maxPair);
+            } else if (inCluster0 == null && inCluster1 !== null) {
+                // add to cluster
+                clusters[inCluster1].push(maxPair[0]);
+            } else if (inCluster0 !== null && inCluster1 == null) {
+                // add to cluster
+                clusters[inCluster0].push(maxPair[1]);
+            } else if (inCluster0 !== inCluster1) {
+                // merge clusters
+                clusters[inCluster0] = clusters[inCluster0].concat(clusters[inCluster1])
+                clusters.splice(inCluster1, 1)
             }
         }
-        return null;
-    }
-    let maxVal; let maxPair;
-    [maxVal, maxPair] = getMaxIndices(simMatrix);
-    clusters.push(maxPair);
-    simMatrix[maxPair[0]][maxPair[1]] = 0;
-
-    const simThreshold = 0.6;
-    let clusterPrintOut = []
-    while (maxVal > simThreshold) {
-        [maxVal, maxPair] = getMaxIndices(simMatrix);
-
-        simMatrix[maxPair[0]][maxPair[1]] = 0;
-        // options: add to cluster, merge two clusters, or create new cluster
-        let inCluster0 = checkInCluster(clusters, maxPair[0]);
-        let inCluster1 = checkInCluster(clusters, maxPair[1]);
-
-        const clusterCopy = clusters.map((cluster) => cluster.slice())
-        if (inCluster0 == null && inCluster1 == null) {
-            // make new cluster
-            clusters.push(maxPair);
-        } else if (inCluster0 == null && inCluster1 !== null) {
-            // add to cluster
-            clusters[inCluster1].push(maxPair[0]);
-        } else if (inCluster0 !== null && inCluster1 == null) {
-            // add to cluster
-            clusters[inCluster0].push(maxPair[1]);
-        } else if (inCluster0 !== inCluster1) {
-            // merge clusters
-            clusters[inCluster0] = clusters[inCluster0].concat(clusters[inCluster1])
-            clusters.splice(inCluster1, 1)
-        }
+        return [allSentences, clusters];
     }
 
+    const [allSentences, clusters] = getClusters();
 
     for (let k=0; k<clusters.length; k++) {
         const clusterSentences = clusters[k].map((index) => [index, allSentences[index].sentence]);

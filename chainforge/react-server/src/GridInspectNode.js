@@ -483,44 +483,39 @@ const GridInspectNode = ({ data, id }) => {
     );
     console.log('jsonResponsesMod', jsonResponsesMod);
 
-    // learn the bm25 vectors
-    const bm25 = BM25Vectorizer();
-    const corpus = jsonResponsesMod.map((obj) => obj.response);
-    corpus.forEach((doc) => bm25.learn(nlp.readDoc(doc).tokens().out(its.normal)));;
+    // function to learn the bm25 vectors
+    const getBm25Vectors = () => {
+        const bm25 = BM25Vectorizer();
+        const corpus = jsonResponsesMod.map((obj) => obj.response);
+        corpus.forEach((doc) => bm25.learn(nlp.readDoc(doc).tokens().out(its.normal)));;
+        return bm25;
+    }
 
-    // pull out tf-idf and top terms
-    const idf_array = bm25.out(its.idf);
-    const idf_obj = idf_array.reduce((obj, [key, val]) => {
-        obj[key] = val;
-        return obj;
-    }, {});
-    console.log("idf_obj", idf_obj);
-    const example = bm25.doc(0).out(its.tf);
-    const docBowArray = bm25.out(its.docBOWArray);
-    // console.log("jsonResponsesMod:", jsonResponsesMod[0].response);
-    // console.log("corpus", corpus[0]);
-    // console.log("bm25 doc", bm25.doc(0).out(its.normal));
-    // console.log("tf", example);
-    // console.log("tf-idf", example.map((arr) => [arr[0], arr[1]*idf_obj[arr[0]]]));
-    // console.log("docBOWarray", docBowArray);
+    // calcualte idf arrays for each vector
+    const getIdfArray = (bm25) => {
+        // pull out tf-idf and top terms
+        const idf_array = bm25.out(its.idf);
+        const idf_obj = idf_array.reduce((obj, [key, val]) => {
+            obj[key] = val;
+            return obj;
+        }, {});
+        return idf_obj;
+    }
 
-    const topNTerms = (i, n) => {
-        // this version calculate the tf-df for doc number i
-        // then returns the top scoring n terms
+    // calculate tf-idf for doc i and return top n scoring terms
+    const topTfidfTerms = (i, n) => {
         const tf = bm25.doc(i).out(its.tf);
         const tfidf = tf.map((arr) => [arr[0], arr[1]*idf_obj[arr[0]]])
         tfidf.sort((a, b) => b[1] - a[1]);
         let top = tfidf.slice(0, n);
         return top.map(term => term[0]);
-
-        // this version takes a docBOWarray (an array of [token, tf] pairs)
-        // and returns the top n tokens with the highest tf score
-        // return Object.keys(obj).sort((a, b) => obj[b] - obj[a]).slice(0, n)
     };
-    const tfidfArray = [...Array(jsonResponsesMod.length).keys()].map((i) => topNTerms(i, 5));
+
+    const bm25 = getBm25Vectors();
+    const idf_obj = getIdfArray(bm25);
+    const tfidfArray = [...Array(jsonResponsesMod.length).keys()].map((i) => topTfidfTerms(i, 5));
+    console.log('idf_obj', idf_obj);
     console.log('tfidfArray', tfidfArray);
-    // console.log("docBowArray[0]", docBowArray[0]);
-    // console.log("topNTerms", topNTerms(0, 5) );
 
 
     /*  SIMPLE AGGLOMERATIVE CLUSTERING
@@ -926,18 +921,6 @@ const GridInspectNode = ({ data, id }) => {
         </Grid>
         
         <p></p>
-        <Grid>
-            <Grid.Col span={2}>
-                <NumberInput
-                  // value="sentNum"
-                  onChange={handleSentNumChange}
-                  defaultValue={2}
-                  min={0}
-                  placeholder="Num"
-                  label="Sentence number"
-                />
-            </Grid.Col>
-        </Grid>
 
         <Accordion variant="contained" defaultValue="" chevronPosition="left" chevronSize="15px" style={{margin: '20px'}}>
           <Accordion.Item value="prompt">

@@ -46,3 +46,7 @@ p.sentenceP {
 	user-select: text; 
 	margin-top: 20px;
 }
+
+.mantine-SegmentedControl-root {
+	border: 0.0625rem solid #ced4da;
+}

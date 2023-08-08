@@ -20,7 +20,14 @@ const as = nlp.as;
 
 // from https://github.com/ianarawjo/ChainForge/blob/main/chainforge/react-server/src/store.js
 /** The color palette used for displaying info about different LLMs. */
-const llmColorPalette = ['#44d044', '#f1b933', '#e46161', '#8888f9', '#33bef0', '#bb55f9', '#f7ee45', '#f955cd', '#26e080', '#2654e0', '#7d8191', '#bea5d1'];
+const llmColorPaletteSaturated = ['#44d044', '#f1b933', '#e46161', '#8888f9', '#33bef0', '#bb55f9', '#f7ee45', '#f955cd', '#26e080', '#2654e0', '#7d8191', '#bea5d1'];
+// https://coolors.co/44d044-f1b933-e46161-8888f9-33bef0-bb55f9-f7ee45-f955cd
+// +60 brightness
+// https://coolors.co/b4ecb4-f9e2ad-f4c0c0-cfcffc-ade5f9-e3bafd-fcf8b5-fdbaeb
+const llmColorPalette = ['#b4ecb4', '#f9e2ad', '#cfcffc', '#ade5f9', '#e3bafd', '#fcf8b5', '#fdbaeb', '#f955cd', '#26e080', '#2654e0', '#7d8191', '#bea5d1'];
+// +60 brightness again
+// https://coolors.co/e2f8e2-fdf4df-fae5e5-ececfe-dff5fd-f4e3fe-fefce2-fee3f7
+const llmColorPaletteDesaturated = ['#e2f8e2', '#fdf4df', '#fae5e5', '#ececfe', '#dff5fd', '#f4e3fe', '#fefce2', '#fee3f7', '#26e080', '#2654e0', '#7d8191', '#bea5d1'];
 
 /** The color palette used for displaying variations of prompts and prompt variables (non-LLM differences). 
  * Distinct from the LLM color palette in order to avoid confusion around what the data means.
@@ -751,10 +758,50 @@ const GridInspectNode = ({ data, id }) => {
             </tbody>
         </table>);
 
+    const getSentObj = (sentId) => {
+        const respObj = jsonResponsesMod[allSentences[sentId].respIndex];
+        const sentIndex = allSentences[sentId].sentIndex;
+        return respObj.sentences[sentIndex];
+    }
+    const getToken = (sentId, tokenIndex) => {
+        const respObj = jsonResponsesMod[allSentences[sentId].respIndex];
+        return respObj.responseTokenized[tokenIndex];
+    }
+
     const grouping = clusterGroupings.map((cluster, clusterIndex) => {
-        const clusterSentences = cluster.map(sentId => {
-            const spanStyle = {backgroundColor: llmColorPalette[clusterIndex]}
-            return <p key={sentId} className="sentenceP"><span style={spanStyle}>{allSentences[sentId].sentence}</span></p>;
+        const clusterSentences = cluster.map((sentId, mappedSentIndex, arr) => {
+            const respObj = jsonResponsesMod[allSentences[sentId].respIndex];
+            const sentIndex = allSentences[sentId].sentIndex;
+            const sentObj = respObj.sentences[sentIndex];
+            const tokenIndices = respObj.sentences[sentIndex].tokenIndices;
+            const filteredTokenIndices = tokenIndices.filter((tokenIndex) => getToken(sentId, tokenIndex) !== "<br/><br/>");
+            
+            return (
+                <p key={sentId} className="sentenceP">
+                {filteredTokenIndices.map((tokenIndex, mappedTokenIndex) => {
+
+                    const token = getToken(sentId, tokenIndex);
+                    let spanStyle = {backgroundColor: llmColorPalette[clusterIndex]}
+
+                    if (mappedSentIndex > 0) {
+                        const prevSentId = arr[mappedSentIndex-1];
+                        const prevSentObj = getSentObj(prevSentId);
+                        const prevTokenIndices = prevSentObj.tokenIndices;
+                        const filteredPrevTokenIndices = prevTokenIndices.filter((tokenIndex) => getToken(prevSentId, tokenIndex) !== "<br/><br/>");
+
+                        let prevTokenIndex = filteredPrevTokenIndices[mappedTokenIndex];
+                        let prevToken = getToken(prevSentId, prevTokenIndex);
+
+                        if (prevToken === token) {
+                            spanStyle = {backgroundColor: llmColorPalette[clusterIndex], color: 'grey'}
+                        }
+                    }
+                    if (token == "<br/>") {return <></>;}
+                    if (token == "<br/><br/>") {return <></>;}
+                    return <span style={spanStyle}>{token} </span>
+                })}
+                </p>
+                );
         });
         return <div className="clusterGroup" key={clusterIndex}>{clusterSentences}</div>;
     });
@@ -842,24 +889,33 @@ const GridInspectNode = ({ data, id }) => {
                     </Grid.Col>
                 </Grid>
             </Grid.Col>
-            <Grid.Col span={7} style={{backgroundColor: '#eee', borderRadius: '5px', margin: '10px'}}>
+            <Grid.Col span={5} style={{backgroundColor: '#eee', borderRadius: '5px', margin: '10px'}}>
                 <div style={{fontSize: '10pt', color: '#777'}}>Set extra dimensions:</div>
                 <Grid>
                     {alt_select_obj}
+                </Grid>
+            </Grid.Col>
+            <Grid.Col span={2} style={{backgroundColor: '#E7F5FF', borderRadius: '5px', margin: '10px'}}>
+                <div style={{fontSize: '10pt', color: '#777'}}>Set display type:</div>
+                <Grid align="flex-end">
+                    <Grid.Col>
+                    <label class="mantine-InputWrapper-label mantine-Select-label mantine-jkwmhw" for="mantine-iyl5n76na" id="mantine-iyl5n76na-label" style={{opacity: '0'}}>model</label>
+                    <SegmentedControl color="blue"
+                      value={segmentedViewValue}
+                      onChange={handleSegmentedViewValueChange}
+                      data={[
+                        { label: 'Grid', value: 'grid' },
+                        { label: 'Groupings', value: 'group' },
+                      ]}
+                    />
+                    </Grid.Col>
                 </Grid>
             </Grid.Col>
         </Grid>
 
         <p></p>
 
-        <SegmentedControl color="blue"
-          value={segmentedViewValue}
-          onChange={handleSegmentedViewValueChange}
-          data={[
-            { label: 'Grid', value: 'grid' },
-            { label: 'Groupings', value: 'group' },
-          ]}
-        />
+        
 
         <p></p>
 

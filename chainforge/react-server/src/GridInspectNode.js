@@ -3,7 +3,7 @@ import { Handle } from 'react-flow-renderer';
 import useStore from './store';
 import NodeLabel from './NodeLabelComponent'
 import {BASE_URL} from './store';
-import { Container, Grid, Select, Radio, NumberInput, Group, Paper, Text, Accordion } from '@mantine/core';
+import { Container, Grid, Select, Radio, NumberInput, Group, Paper, Text, Accordion, SegmentedControl } from '@mantine/core';
 import './output-grid.css';
 
 import embeddingsFilePath from './nlp_models/glove.6B.50d.10k.txt';
@@ -114,7 +114,7 @@ const GridInspectNode = ({ data, id }) => {
   const [rowValue, setRowValue] = useState([]);
   const [altValues, setAltValues] = useState([]);
   const [highlightRadioValue, setHighlightRadioValue] = useState([]);
-  const [sentNum, setSentNum] = useState([]);
+  const [segmentedViewValue, setSegmentedViewValue] = useState('grid');
 
 
 
@@ -130,118 +130,6 @@ const GridInspectNode = ({ data, id }) => {
     console.log("similarity of dog and cat", cosine_similarity(embeddings["cat"], embeddings["dog"]));
     console.log("similarity of dog and table", cosine_similarity(embeddings["table"], embeddings["dog"]));
 
-    const badNgram = (ngram) => {
-      const cleanNgram = ngram.trim();
-      const badWords = [
-        "the",
-        "and",
-        "an",
-        "a",
-        "as",
-        "with",
-        "its",
-        "of",
-        "our",
-        "in",
-        "this",
-        "that",
-        "these",
-        "those",
-        "their",
-        "they",
-        "them",
-        "to",
-        ".",
-        ",",
-        ";"
-      ];
-      const badBigrams = badWords.flatMap((word1, index1) => 
-        badWords.filter((_, index2) => index1 !== index2).map(word2 => word1 + ' ' + word2)
-      );
-      if (badWords.includes(cleanNgram.toLowerCase())) {
-        return true;
-      }
-      if (badBigrams.includes(cleanNgram.toLowerCase())) {
-        return true;
-      }
-      return false;
-    }
-
-    // assumes tokens is a list of list of tokens
-    const selectNgrams = (tokens, max_n, k) => {
-      let ngrams = {};
-      for (let i = 0; i < tokens.length; ++i) {
-        for (let j = 0; j < tokens[i].length; ++j) {
-          for (let n = 1; n <= max_n; n++) {
-            if (j + n > tokens[i].length) {
-              continue;
-            }
-            let ngram = tokens[i].slice(j, j + n);
-            ngram = ngram.join(" ");
-            if (!ngrams[ngram]) {
-              ngrams[ngram] = [];
-            }
-            ngrams[ngram].push({ i: i, j: j, n: n });
-          }
-        }
-      }
-
-      for (var key in ngrams) {
-        if (badNgram(key)) {
-          delete ngrams[key];
-        }
-      }
-
-      // Convert to [key, value] pairs and calculate max n for each ngram
-      let pairs = Object.entries(ngrams).map(([ngram, locations]) => {
-        let maxN = Math.max(...locations.map((location) => location.n));
-        let count = locations.length;
-        return [ngram, locations, maxN, count];
-      });
-
-      // Sort by max n, in descending order, then by count, also in descending order
-      pairs.sort((a, b) => b[2] - a[2] || b[3] - a[3]);
-
-      // Get top k ngrams
-      let topKNgrams = {};
-      let blockedIndices = Array(tokens.length)
-        .fill()
-        .map(() => new Set());
-
-      for (let i = 0; i < pairs.length; ++i) {
-        const [ngram, locations] = pairs[i];
-
-        if (locations.length === 1) {
-          continue;
-        }
-
-        // check if an ngram is overlapping with an already-added ngram
-        let overlapped = false;
-
-        for (const location of locations) {
-          for (let idx = location.j; idx < location.j + location.n; idx++) {
-            if (blockedIndices[location.i].has(idx)) {
-              overlapped = true;
-              break;
-            }
-          }
-          if (overlapped) break;
-        }
-
-        if (!overlapped) {
-          topKNgrams[ngram] = locations;
-          if (Object.keys(topKNgrams).length === k) break;
-
-          for (const location of locations) {
-            for (let idx = location.j; idx < location.j + location.n; idx++) {
-              blockedIndices[location.i].add(idx);
-            }
-          }
-        }
-      }
-
-      return topKNgrams;
-    }
 
      // Returns length of longest common substring of X[0..m-1] and Y[0..n-1]
     const LCSubStr = (X, Y) => {
@@ -526,6 +414,11 @@ const GridInspectNode = ({ data, id }) => {
         Find next most similar two sentences:
             Either add to a cluster, merge two clustesr, or make a new cluster.
         Repeat until n clusters or sentences too similar.
+        Return [allSentences, clusters] where:
+            allSentences: array of all sentences, where each sentence is
+                {bow: {...}, respIndex: int, sentIndex: int, sentence: str }
+            clusters: array of clusters, where each cluster is an array of
+                sentence ids, i.e. index in allSentences
     */
     const getClusters = () => {
         // First make a list of all sentences
@@ -611,11 +504,55 @@ const GridInspectNode = ({ data, id }) => {
     }
 
     const [allSentences, clusters] = getClusters();
+    console.log("allSentences", allSentences);
+
+    /* SIMPLE SENTENCE GROUPING (EXAMPLORE)
+       Calculate the normalized position of each sentence in its response
+       Calculate the avg normalized position for each cluster
+       Return groupings: ordered array of groups, where each group is an array
+        of sentence ids, i.e. index in allSentences
+    */
+    const getGroupings = () => {
+
+        // function to get normalized position of each sentence
+        const calcPosition = (sentId) => {
+            const idx = allSentences[sentId].respIndex;
+            const numSentences = jsonResponsesMod[idx].sentences.length - 1;
+            return allSentences[sentId].sentIndex / numSentences;
+        }
+
+        // get the normalized position of each sentence in each cluster
+        const positions = clusters.map((cluster) => {
+            return cluster.map((sentId) => {
+                return calcPosition(sentId);
+            });
+        });
+        console.log("positions", positions);
+
+        // calculate avg position for each cluster
+        const avgPosition = positions.map((arr) => {
+            const sum = arr.reduce((partialSum, a) => partialSum + a, 0);
+            return sum / arr.length;
+        });
+        console.log("avgPosition", avgPosition);
+
+        // get cluster indices ordered by avg position
+        const sortedClusters = avgPosition
+            .map((val, index) => ({val, index}))
+            .sort((a,b) => a.val - b.val)
+            .map(obj => obj.index);
+        console.log("sortedClusters", sortedClusters);
+
+        return sortedClusters.map(idx => clusters[idx]);
+    }
 
     for (let k=0; k<clusters.length; k++) {
         const clusterSentences = clusters[k].map((index) => [index, allSentences[index].sentence]);
         console.log("cluster", k, clusterSentences);
     }
+
+    const clusterGroupings = getGroupings();
+    console.log("clusterGroupings", clusterGroupings);
 
 
 
@@ -645,7 +582,9 @@ const GridInspectNode = ({ data, id }) => {
         for (let x=0; x<col_names.length; x++) {
             // find the data that goes in that cell given the row and col
             // assumes it should only find one (i.e. takes first item in filtered list)
-            let cellData = jsonResponsesMod.filter(resp => resp.vars[columnValue] === col_names[x] && resp.vars[rowValue] === row_names[y]);
+            let cellData = jsonResponsesMod.filter((resp) =>
+                resp.vars[columnValue] === col_names[x]
+                && resp.vars[rowValue] === row_names[y]);
             // now filter it given any extra options that need to be selected
             cellData = cellData.filter(resp => {
                 return Object.entries(altValues).every(([key, val]) => {
@@ -677,11 +616,6 @@ const GridInspectNode = ({ data, id }) => {
     console.log("allLCS", allLCS);
     console.log("allLCS_colors", allLCS_colors);
 
-
-    const rowNgrams = gridResponses.map((row) => selectNgrams(row.map((cell) => cell.responseTokenized), 5, 3));
-    const colNgrams = gridResponses[0].map((_, i) => selectNgrams(gridResponses.map((row) => row[i].responseTokenized), 5, 3));
-    console.log('rowNgrams', rowNgrams);
-    console.log('colNgrams', colNgrams);
 
     // lcs highlighting uses the same functions as the old ngram ones
     // because the detecting algorithms return the same output form
@@ -773,9 +707,9 @@ const GridInspectNode = ({ data, id }) => {
 
 
     col_names.unshift(""); // add empty string for row headers
-    const header = col_names.map((el) => {
-        return <th>{el}</th>
-    });
+
+    const header = col_names.map((el) => { return <th>{el}</th> });
+
     const cells = gridResponses.map((row, rowIndex) => {
         return (
             <tr>
@@ -810,6 +744,21 @@ const GridInspectNode = ({ data, id }) => {
         );
     });
 
+    const table = (<table class='outputgrid'>
+            <tbody>
+                <tr>{header}</tr>
+                {cells}
+            </tbody>
+        </table>);
+
+    const grouping = clusterGroupings.map((cluster, clusterIndex) => {
+        const clusterSentences = cluster.map(sentId => {
+            const spanStyle = {backgroundColor: llmColorPalette[clusterIndex]}
+            return <p key={sentId} className="sentenceP"><span style={spanStyle}>{allSentences[sentId].sentence}</span></p>;
+        });
+        return <div className="clusterGroup" key={clusterIndex}>{clusterSentences}</div>;
+    });
+
     
 
     // ==========================================================
@@ -835,9 +784,8 @@ const GridInspectNode = ({ data, id }) => {
         setHighlightRadioValue(new_val);
     };
 
-    const handleSentNumChange = (new_val) => {
-        console.log("setting sentNum to", new_val);
-        setSentNum(new_val);
+    const handleSegmentedViewValueChange = (new_val) => {
+        setSegmentedViewValue(new_val);
     };
 
     const alt_select_obj = tab_options.map((alt_value, index) => {
@@ -866,8 +814,7 @@ const GridInspectNode = ({ data, id }) => {
 
     // Set the HTML / React element
     const my_vis_component = (<Container fluid="true">
-        <Grid>
-            
+        <Grid> 
             <Grid.Col span={4} style={{backgroundColor: '#eee', borderRadius: '5px', margin: '10px'}}>
                 <div style={{fontSize: '10pt', color: '#777'}}>Set table dimensions:</div>
                 <Grid>
@@ -902,6 +849,18 @@ const GridInspectNode = ({ data, id }) => {
                 </Grid>
             </Grid.Col>
         </Grid>
+
+        <p></p>
+
+        <SegmentedControl color="blue"
+          value={segmentedViewValue}
+          onChange={handleSegmentedViewValueChange}
+          data={[
+            { label: 'Grid', value: 'grid' },
+            { label: 'Groupings', value: 'group' },
+          ]}
+        />
+
         <p></p>
 
         <div style={{fontSize: '10pt', color: '#777'}}>Select what to highlight:</div>
@@ -934,17 +893,14 @@ const GridInspectNode = ({ data, id }) => {
         </Accordion>
 
         
+        {segmentedViewValue == "grid" ? table : grouping}
         
-        <table class='outputgrid'>
-            <tbody>
-                <tr>{header}</tr>
-                {cells}
-            </tbody>
-        </table>
+
         </Container>);  // replace with your own
+
     setVisualization(my_vis_component);
 
-  }, [columnValue, rowValue, altValues, highlightRadioValue, jsonResponses, sentNum]);
+  }, [columnValue, rowValue, altValues, highlightRadioValue, jsonResponses, segmentedViewValue]);
 
   // Grab the LLM(s) response data from the back-end server.
   // Called upon connect to another node, or upon a 'refresh' triggered upstream.

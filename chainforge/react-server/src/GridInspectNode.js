@@ -94,6 +94,8 @@ const cosine_similarity = (vector1, vector2) => {
 }
 
 
+const stop = [",", ";", ":", "?", "!", "(", ")", "i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your", "yours", "yourself", "yourselves", "he", "him", "his", "himself", "she", "her", "hers", "herself", "it", "its", "itself", "they", "them", "their", "theirs", "themselves", "what", "which", "who", "whom", "this", "that", "these", "those", "am", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "having", "do", "does", "did", "doing", "a", "an", "the", "and", "but", "if", "or", "because", "as", "until", "while", "of", "at", "by", "for", "with", "about", "against", "between", "into", "through", "during", "before", "after", "above", "below", "to", "from", "up", "down", "in", "out", "on", "off", "over", "under", "again", "further", "then", "once", "here", "there", "when", "where", "why", "how", "all", "any", "both", "each", "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "s", "t", "can", "will", "just", "don", "should", "now"];
+
 
 const GridInspectNode = ({ data, id }) => {
 
@@ -330,7 +332,7 @@ const GridInspectNode = ({ data, id }) => {
         return colors;
     }
 
-    // defunct bc of moving to wink-nlp?
+    // white space based tokenization
     const tokenize = (string) => {
         string = string.replaceAll("\n", " \n ");
         return string.split(" ");
@@ -351,6 +353,8 @@ const GridInspectNode = ({ data, id }) => {
             const sentencesOut = doc.sentences().out();
             const sentenceTokens = sentencesOut.map((text) => tokenize(text));
             const flatTokens = sentenceTokens.flat();
+            const lemmas = flatTokens.map((token) => nlp.readDoc(token).tokens().out(its.lemma)[0]);
+            console.log("lemmas", lemmas);
             let indices = [];
             let counter = 0;
 
@@ -373,6 +377,7 @@ const GridInspectNode = ({ data, id }) => {
                 vars: { ...obj.vars, responseNum: index.toString(), model: obj.llm },
                 response: response,
                 responseTokenized: flatTokens,
+                responseLemmas: lemmas,
                 index: counterResp,
                 sentences: sentences
             };
@@ -386,7 +391,7 @@ const GridInspectNode = ({ data, id }) => {
     const getBm25Vectors = () => {
         const bm25 = BM25Vectorizer();
         const corpus = jsonResponsesMod.map((obj) => obj.response);
-        corpus.forEach((doc) => bm25.learn(nlp.readDoc(doc).tokens().out(its.normal)));;
+        corpus.forEach((doc) => bm25.learn(nlp.readDoc(doc).tokens().out(its.lemma)));;
         return bm25;
     }
 
@@ -410,9 +415,20 @@ const GridInspectNode = ({ data, id }) => {
         return top.map(term => term[0]);
     };
 
+    // function to remove stopwords from tfidfArray
+    const removeStopWords = (outputArray, stopWords, n) => {
+        const updatedArray = outputArray.map(innerArray => {
+            return innerArray.filter(word => !stopWords.includes(word));
+        });
+        return updatedArray;
+    }
+
     const bm25 = getBm25Vectors();
     const idf_obj = getIdfArray(bm25);
-    const tfidfArray = [...Array(jsonResponsesMod.length).keys()].map((i) => topTfidfTerms(i, 5));
+    const baseTfidfArray = [...Array(jsonResponsesMod.length).keys()].map((i) => topTfidfTerms(i, 10));
+    const tfidfN = 5;
+    const tfidfArray = removeStopWords(baseTfidfArray, stop).map((arr) => arr.slice(0,tfidfN));
+
     console.log('idf_obj', idf_obj);
     console.log('tfidfArray', tfidfArray);
 
@@ -664,7 +680,8 @@ const GridInspectNode = ({ data, id }) => {
         return [false, null];
     }
     const shouldHighlightTfidf = (cell, tokenIndex) => {
-        if (tfidfArray[cell.index].includes(cell.responseTokenized[tokenIndex].toLowerCase())) {
+        const currTokenLemma = cell.responseLemmas[tokenIndex];
+        if (tfidfArray[cell.index].includes(currTokenLemma)) {
             let colorIndex = cell.index;
             if (colorIndex >= llmColorPalette.length) {
                 colorIndex = colorIndex - llmColorPalette.length;

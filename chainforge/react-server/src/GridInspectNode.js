@@ -121,6 +121,7 @@ const GridInspectNode = ({ data, id }) => {
   const [rowValue, setRowValue] = useState([]);
   const [altValues, setAltValues] = useState([]);
   const [highlightRadioValue, setHighlightRadioValue] = useState([]);
+  const [groupColor, setGroupColor] = useState([]);
   const [segmentedViewValue, setSegmentedViewValue] = useState('grid');
 
 
@@ -556,10 +557,6 @@ const GridInspectNode = ({ data, id }) => {
         return sortedClusters.map(idx => clusters[idx]);
     }
 
-    for (let k=0; k<clusters.length; k++) {
-        const clusterSentences = clusters[k].map((index) => [index, allSentences[index].sentence]);
-        console.log("cluster", k, clusterSentences);
-    }
 
     const clusterGroupings = getGroupings();
     console.log("clusterGroupings", clusterGroupings);
@@ -575,6 +572,7 @@ const GridInspectNode = ({ data, id }) => {
     // find all vars for table
     const var_names = [...new Set(jsonResponsesMod.map((obj) => Object.keys(obj.vars)).flat(1))];
     const tab_options = [var_names].flat(1);
+    console.log("var_names", var_names, "tab_options", tab_options);
 
     // set up the alt options -- the values that will not be represented in the table axes
     // right now this is same as tab options, but later we'll remove the selected table axes as options
@@ -621,8 +619,6 @@ const GridInspectNode = ({ data, id }) => {
     // const allLCS = findOverlap(gridResponses.flatMap(item => item).map(item => item.responseTokenized), 5);
     const allLCS = findOverlap(jsonResponsesMod.map(item => item.responseTokenized), 5);
     const allLCS_colors = getColors(allLCS);
-    // console.log("rowLCS", rowLCS);
-    // console.log("colLCS", colLCS);
     console.log("allLCS", allLCS);
     console.log("allLCS_colors", allLCS_colors);
 
@@ -771,9 +767,24 @@ const GridInspectNode = ({ data, id }) => {
         return respObj.responseTokenized[tokenIndex];
     }
 
+    const groupColorOptions = [...new Set(jsonResponsesMod.map((obj) => obj.vars[groupColor]))];
+
+    const groupColorOptionsDisplay = groupColorOptions.map((colorOption, colorIndex) => {
+        const spanStyle = {backgroundColor: llmColorPalette[colorIndex]};
+        const thisKey = {colorOption} + "-" + {colorIndex}
+        return (
+            <>
+                <span style={spanStyle}>&nbsp;&nbsp;&nbsp;</span>
+                <span>&nbsp;</span>
+                <span key={thisKey}>{colorOption}</span>
+                <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+            </>)
+    })
+
     const grouping = clusterGroupings.map((cluster, clusterIndex) => {
         const clusterSentences = cluster.map((sentId, mappedSentIndex, arr) => {
             const respObj = jsonResponsesMod[allSentences[sentId].respIndex];
+            const respColorIndex = groupColorOptions.indexOf(respObj.vars[groupColor]);
             const sentIndex = allSentences[sentId].sentIndex;
             const sentObj = respObj.sentences[sentIndex];
             const tokenIndices = respObj.sentences[sentIndex].tokenIndices;
@@ -781,10 +792,12 @@ const GridInspectNode = ({ data, id }) => {
             
             return (
                 <p key={sentId} className="sentenceP">
+                <span style={{backgroundColor: llmColorPalette[respColorIndex]}}>&nbsp;&nbsp;&nbsp;</span>
+                <span>&nbsp;</span>
                 {filteredTokenIndices.map((tokenIndex, mappedTokenIndex) => {
 
                     const token = getToken(sentId, tokenIndex);
-                    let spanStyle = {backgroundColor: llmColorPalette[clusterIndex]}
+                    let spanStyle = {}
 
                     if (mappedSentIndex > 0) {
                         const prevSentId = arr[mappedSentIndex-1];
@@ -796,18 +809,19 @@ const GridInspectNode = ({ data, id }) => {
                         let prevToken = getToken(prevSentId, prevTokenIndex);
 
                         if (prevToken === token) {
-                            spanStyle = {backgroundColor: llmColorPalette[clusterIndex], color: 'grey'}
+                            spanStyle = {color: 'grey'}
                         }
                     }
                     if (token == "<br/>") {return <></>;}
                     if (token == "<br/><br/>") {return <></>;}
-                    return <span style={spanStyle}>{token} </span>
+                    return (<span style={spanStyle}>{token} </span>);
                 })}
                 </p>
                 );
         });
         return <div className="clusterGroup" key={clusterIndex}>{clusterSentences}</div>;
     });
+
 
     
 
@@ -838,6 +852,51 @@ const GridInspectNode = ({ data, id }) => {
         setSegmentedViewValue(new_val);
     };
 
+    const handleGroupColorChange = (new_val) => {
+        setGroupColor(new_val);
+    };
+
+    const gridHighlightingOptions = (<div>
+        <div style={{fontSize: '10pt', color: '#777'}}>Select what to highlight:</div>
+        <Grid>
+            <Grid.Col span={10}>
+                <Radio.Group
+                  value={highlightRadioValue}
+                  onChange={handleHighlightRadioValue}
+                  name="highlightRadioValue"
+                  defaultValue="none"
+                >
+                  <Group mt="xs">
+                    <Radio value="none" label="None" />
+                    <Radio value="lcs" label="Exact Matches" />
+                    <Radio value="tfidf" label="Unique Words" />
+                    <Radio value="sent" label="Similar Sentences" />
+                  </Group>
+                </Radio.Group>
+            </Grid.Col>
+        </Grid>
+    </div>);
+
+    const groupHighlightingOptions = (<>
+        <Grid.Col span={2} style={{backgroundColor: '#eee', borderRadius: '5px', margin: '10px'}}>
+        <div style={{fontSize: '10pt', color: '#777'}}>Color responses by:</div>
+            <Select clearable
+              size="xs"
+              onChange={handleGroupColorChange}
+              label=" "
+              placeholder="Pick one"
+              defaultValue="Model"
+              data={tab_options}
+              value={groupColor}
+            />
+        </Grid.Col>
+        <Grid.Col span={6} style={{backgroundColor: '#eee', borderRadius: '5px', margin: '10px'}}>
+            <div style={{fontSize: '10pt', color: '#777'}}>Legend:</div>
+            <p></p>
+            {groupColorOptionsDisplay}
+        </Grid.Col>
+    </>);
+
     const alt_select_obj = tab_options.map((alt_value, index) => {
         if (columnValue == null || rowValue == null || columnValue == "" || rowValue == "") {
             return (<></>);
@@ -862,87 +921,77 @@ const GridInspectNode = ({ data, id }) => {
         );
     });
 
+    const gridDimensionOptions = (<>
+        <Grid.Col span={4} style={{backgroundColor: '#eee', borderRadius: '5px', margin: '10px'}}>
+            <div style={{fontSize: '10pt', color: '#777'}}>Set table dimensions:</div>
+            <Grid>
+                <Grid.Col span={6}>
+                    <Select clearable
+                      size="xs"
+                      onChange={handleColumnValueChange}
+                      label="Columns"
+                      placeholder="Pick one"
+                      defaultValue="Model"
+                      data={tab_options}
+                      value={columnValue}
+                    />
+                </Grid.Col>
+                <Grid.Col span={6}>
+                    <Select clearable
+                      size="xs"
+                      onChange={handleRowValueChange}
+                      label="Rows"
+                      placeholder="Pick one"
+                      defaultValue="Model"
+                      data={tab_options}
+                      value={rowValue}
+                    />
+                </Grid.Col>
+            </Grid>
+        </Grid.Col>
+        <Grid.Col span={5} style={{backgroundColor: '#eee', borderRadius: '5px', margin: '10px'}}>
+            <div style={{fontSize: '10pt', color: '#777'}}>Set extra dimensions:</div>
+            <Grid>
+                {alt_select_obj}
+            </Grid>
+        </Grid.Col>
+    </>);
+
+
+
+
     // Set the HTML / React element
     const my_vis_component = (<Container fluid="true">
-        <Grid> 
-            <Grid.Col span={4} style={{backgroundColor: '#eee', borderRadius: '5px', margin: '10px'}}>
-                <div style={{fontSize: '10pt', color: '#777'}}>Set table dimensions:</div>
-                <Grid>
-                    <Grid.Col span={6}>
-                        <Select clearable
-                          size="xs"
-                          onChange={handleColumnValueChange}
-                          label="Columns"
-                          placeholder="Pick one"
-                          defaultValue="Model"
-                          data={tab_options}
-                          value={columnValue}
+        <div style={{position: "sticky", top: "0", backgroundColor: "white"}}>
+            <Grid> 
+                <Grid.Col span={2} style={{backgroundColor: '#E7F5FF', borderRadius: '5px', margin: '10px'}}>
+                    <div style={{fontSize: '10pt', color: '#777'}}>Set display type:</div>
+                    <Grid align="flex-end">
+                        <Grid.Col>
+                        <label class="mantine-InputWrapper-label mantine-Select-label mantine-jkwmhw" for="mantine-iyl5n76na" id="mantine-iyl5n76na-label" style={{opacity: '0'}}>model</label>
+                        <SegmentedControl color="blue"
+                          value={segmentedViewValue}
+                          onChange={handleSegmentedViewValueChange}
+                          data={[
+                            { label: 'Table', value: 'grid' },
+                            { label: 'Groupings', value: 'group' },
+                          ]}
                         />
-                    </Grid.Col>
-                    <Grid.Col span={6}>
-                        <Select clearable
-                          size="xs"
-                          onChange={handleRowValueChange}
-                          label="Rows"
-                          placeholder="Pick one"
-                          defaultValue="Model"
-                          data={tab_options}
-                          value={rowValue}
-                        />
-                    </Grid.Col>
-                </Grid>
-            </Grid.Col>
-            <Grid.Col span={5} style={{backgroundColor: '#eee', borderRadius: '5px', margin: '10px'}}>
-                <div style={{fontSize: '10pt', color: '#777'}}>Set extra dimensions:</div>
-                <Grid>
-                    {alt_select_obj}
-                </Grid>
-            </Grid.Col>
-            <Grid.Col span={2} style={{backgroundColor: '#E7F5FF', borderRadius: '5px', margin: '10px'}}>
-                <div style={{fontSize: '10pt', color: '#777'}}>Set display type:</div>
-                <Grid align="flex-end">
-                    <Grid.Col>
-                    <label class="mantine-InputWrapper-label mantine-Select-label mantine-jkwmhw" for="mantine-iyl5n76na" id="mantine-iyl5n76na-label" style={{opacity: '0'}}>model</label>
-                    <SegmentedControl color="blue"
-                      value={segmentedViewValue}
-                      onChange={handleSegmentedViewValueChange}
-                      data={[
-                        { label: 'Grid', value: 'grid' },
-                        { label: 'Groupings', value: 'group' },
-                      ]}
-                    />
-                    </Grid.Col>
-                </Grid>
-            </Grid.Col>
-        </Grid>
+                        </Grid.Col>
+                    </Grid>
+                </Grid.Col>
+                {segmentedViewValue == "grid" ? gridDimensionOptions : groupHighlightingOptions}
+            </Grid>
 
+            <p></p>
+
+            {segmentedViewValue == "grid" ? gridHighlightingOptions : <></>}
+        </div>
+        
+        
         <p></p>
 
         
-
-        <p></p>
-
-        <div style={{fontSize: '10pt', color: '#777'}}>Select what to highlight:</div>
-        <Grid>
-
-            <Grid.Col span={10}>
-                <Radio.Group
-                  value={highlightRadioValue}
-                  onChange={handleHighlightRadioValue}
-                  name="highlightRadioValue"
-                  defaultValue="none"
-                >
-                  <Group mt="xs">
-                    <Radio value="none" label="None" />
-                    <Radio value="lcs" label="Exact Matches" />
-                    <Radio value="tfidf" label="Unique Words" />
-                    <Radio value="sent" label="Similar Sentences" />
-                  </Group>
-                </Radio.Group>
-            </Grid.Col>
-        </Grid>
-        
-        <p></p>
 
         <Accordion variant="contained" defaultValue="" chevronPosition="left" chevronSize="15px" style={{margin: '20px'}}>
           <Accordion.Item value="prompt">
@@ -959,7 +1008,7 @@ const GridInspectNode = ({ data, id }) => {
 
     setVisualization(my_vis_component);
 
-  }, [columnValue, rowValue, altValues, highlightRadioValue, jsonResponses, segmentedViewValue]);
+  }, [columnValue, rowValue, altValues, highlightRadioValue, jsonResponses, segmentedViewValue, groupColor]);
 
   // Grab the LLM(s) response data from the back-end server.
   // Called upon connect to another node, or upon a 'refresh' triggered upstream.

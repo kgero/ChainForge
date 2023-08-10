@@ -798,6 +798,47 @@ const GridInspectNode = ({ data, id }) => {
             </>)
     })
 
+    const countGreyedWords = (sentId1, sentId2) => {
+
+        const getSentObj = (sentId) => {
+            const respObj = jsonResponsesMod[allSentences[sentId].respIndex];
+            const sentIndex = allSentences[sentId].sentIndex;
+            return respObj.sentences[sentIndex];
+        }
+        const getToken = (sentId, tokenIndex) => {
+            const respObj = jsonResponsesMod[allSentences[sentId].respIndex];
+            return respObj.responseTokenized[tokenIndex];
+        }
+
+        // set up all the relevant object properties
+        const respObj = jsonResponsesMod[allSentences[sentId1].respIndex];
+        const sentIndex = allSentences[sentId1].sentIndex;
+        const tokenIndices = respObj.sentences[sentIndex].tokenIndices; // this is the thing we really care about
+        const filteredTokenIndices = tokenIndices.filter((tokenIndex) => getToken(sentId1, tokenIndex) !== "<br/><br/>");
+
+        let count = 0;
+        
+        filteredTokenIndices.map((tokenIndex, mappedTokenIndex) => {
+            const token = getToken(sentId1, tokenIndex);
+
+            const prevSentObj = getSentObj(sentId2);
+            const prevTokenIndices = prevSentObj.tokenIndices;
+            const filteredPrevTokenIndices = prevTokenIndices.filter((tokenIndex) => getToken(sentId2, tokenIndex) !== "<br/><br/>");
+
+            let prevTokenIndex = filteredPrevTokenIndices[mappedTokenIndex];
+            let prevToken = getToken(sentId2, prevTokenIndex);
+
+            if (prevToken === token) {
+                count++;
+            }
+        });
+
+        // return count; // for absolute value
+        return count/filteredTokenIndices.length; // if you'd prefer a percentage
+        // note that you need to decide if you want to normalize on the length
+        // of the first or second sentence...
+    }
+
     const grouping = clusterGroupings.map((cluster, clusterIndex) => {
         const clusterSentences = cluster.map((sentId, mappedSentIndex, arr) => {
             const respObj = jsonResponsesMod[allSentences[sentId].respIndex];
@@ -806,6 +847,12 @@ const GridInspectNode = ({ data, id }) => {
             const sentObj = respObj.sentences[sentIndex];
             const tokenIndices = respObj.sentences[sentIndex].tokenIndices;
             const filteredTokenIndices = tokenIndices.filter((tokenIndex) => getToken(sentId, tokenIndex) !== "<br/><br/>");
+
+            // for testing function that counts greyed out words
+            // if (mappedSentIndex > 0) {
+            //     const numGreyedTokens = countGreyedWords(sentId, arr[mappedSentIndex-1]);
+            //     console.log('numGreyedTokens', sentId, numGreyedTokens)
+            // }
             
             return (
                 <p key={sentId} className="sentenceP">

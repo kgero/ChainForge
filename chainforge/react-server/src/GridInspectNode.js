@@ -201,6 +201,7 @@ const GridInspectNode = ({ data, id }) => {
        ]}
     */
     const findOverlap = (responses, k) => {
+        if (responses.length <= 1) { return {}; }
         let overlaps = {}
         for (let i = 0; i < responses.length-1; i++) {
             for (let j = i+1; j < responses.length; j++) {
@@ -213,13 +214,15 @@ const GridInspectNode = ({ data, id }) => {
                     // console.log("sentObj", sentObj);
                     for (let k=0; k < sentObj.length; k++) {
                         // console.log("sentObj[k]", sentObj[k]);
+                        // console.log("sentObj[k+1]", sentObj[k+1]);
                         if (!sentObj[k].tokenIndices.includes(tokenIndex)) {
+                            // string is not in this sentence
                             continue;
-                        } else if (sentObj[k].tokenIndices.includes(tokenIndex+numTokens)) {
+                        } else if (sentObj[k].tokenIndices.includes(tokenIndex+numTokens-1)) {
                             // doesn't cross sentence boundary
                             return [{"i": respIndex, "j": tokenIndex, "n": numTokens, "str": lcsString}];
                         } else {
-                            // console.log("crossing", k, tokenIndex, numTokens, lcsString);
+                            // crosses sentence boundary
                             const firstN = sentObj[k].tokenIndices.length - sentObj[k].tokenIndices.indexOf(tokenIndex);
                             const secondN = numTokens - firstN;
                             const secondTokenIndex = sentObj[k+1].tokenIndices[0];

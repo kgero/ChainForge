@@ -32,7 +32,8 @@ p.prompt {
 }
 
 p.sentenceP {
-	line-height: .5em;
+/*	line-height: .5em;*/
+	margin: .35em;
 }
 
 .display-linebreak {

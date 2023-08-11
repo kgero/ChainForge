@@ -454,6 +454,265 @@ const GridInspectNode = ({ data, id }) => {
     console.log('tfidfArray', tfidfArray);
 
 
+    /*  BETTER CLUSTERING
+    */
+    const absolute_sim_dist_threshold = 0.55;
+    const group_making_threshold = 1.2;
+    const a = 1.5; //relative weight on content similarity
+    const b = 1; //relative weight on location coherence (less important than content, I think)
+
+    // modifying allSentences; doesn't use response_lengths
+    const compute_response_lengths_and_add_normalized_locations = () => { 
+        let allSentences = jsonResponsesMod.map((respObj) => {
+            return respObj.sentences.map((sentObj, idx) => {
+                const sentenceDetails = {
+                    bow: sentObj.bow,
+                    respIndex: respObj.index,
+                    sentIndex: idx,
+                    sentence: sentObj.text
+                }
+                return sentenceDetails
+            })
+        }).flat();
+
+      let response_lengths = {};
+      for (let i=0; i<allSentences.length; i++){
+        if (Object.keys(response_lengths).includes(allSentences[i].respIndex)) {
+          if (response_lengths[allSentences[i].respIndex]<allSentences[i].sentIndex){
+            response_lengths[allSentences[i].respIndex] = allSentences[i].sentIndex;
+          }
+        } else {
+          response_lengths[allSentences[i].respIndex]=allSentences[i].sentIndex;
+        }
+        //return parseFloat(response_lengths[allSentences[i].respIndex])
+        
+        
+      }
+      for (let i=0; i<allSentences.length; i++){
+        //allSentences[i].normalized_location = parseFloat(allSentences[i].sentIndex)/parseFloat(response_lengths[allSentences[i].respIndex]);
+          allSentences[i].total_resp_length = response_lengths[allSentences[i].respIndex];
+          if (allSentences[i].sentIndex == 0) {allSentences[i].normalized_location = 0} else {
+            allSentences[i].normalized_location = parseFloat(allSentences[i].sentIndex)/parseFloat(allSentences[i].total_resp_length);
+          }
+          
+      }
+      return allSentences;
+    }
+
+    const distance = (sentence_obj1, sentence_obj2) => {
+      var mismatch_total = 0;
+      var total_tokens = 0;
+      var mismatch_dict = {};
+      var match_dict = {};
+      // could replace w a different distance measure, could be roughly BoW cosine
+      // this could be based on greying
+      for (const [key, value] of Object.entries(sentence_obj1.bow)) {
+        let value2 = sentence_obj2.bow[key];
+        if (value2 === undefined) {
+          mismatch_total += value;
+          mismatch_dict[key] = value;
+          total_tokens += value;
+        } else {
+          match_dict[key] = {value, value2};
+          total_tokens += value + value2;
+        }
+        
+      }
+      for (const [key, value] of Object.entries(sentence_obj2.bow)) {
+        if (sentence_obj1.bow[key] === undefined) {
+          mismatch_total += value;
+          mismatch_dict[key] = value;
+          total_tokens += value;
+        }
+      }
+      var mismatch_score = mismatch_total/total_tokens;
+      return { mismatch_score, mismatch_total, total_tokens, mismatch_dict, match_dict };
+    }
+
+    const get_pairs = (minSimScoreThreshold, allSentences) => {
+
+      // then make a similarity matrix
+      let simMatrix = Array(allSentences.length)
+        .fill(0)
+        .map(() => Array(allSentences.length).fill(0)); // TODO: SAFEST THING IS TO FILL WITH INF NOT ZEROS
+      let simMatrix_unmodified = Array(allSentences.length)
+        .fill(0)
+        .map(() => Array(allSentences.length).fill(0)); // TODO: SAFEST THING IS TO FILL WITH INF NOT ZEROS
+      for (let i = 0; i < allSentences.length; i++) {
+        for (let j = 0; j < i; j++) { //instead of j<i, I'm filling out the whole matrix for the unmodified version (not used for clustering) so it's bidirectional
+          simMatrix[i][j] = distance(allSentences[i], allSentences[j])[
+            "mismatch_score"
+          ];
+        }
+      }
+      for (let i = 0; i < allSentences.length; i++) {
+        for (let j = 0; j < allSentences.length; j++) { //instead of j<i, I'm filling out the whole matrix for the unmodified version (not used for clustering) so it's bidirectional
+          simMatrix_unmodified[i][j] = distance(allSentences[i], allSentences[j])[
+            "mismatch_score"
+          ];
+        }
+      }
+      // console.log("simMatrix", simMatrix);
+
+      // run clustering algo
+      let clusters = [];
+      let cluster_dists = []
+      const getMaxSimIndices = (arr) => {
+        let min = Infinity;
+        let indices = [];
+        for (let i = 0; i < arr.length; i++) {
+          for (let j = 0; j < i; j++) {   //TODO: EXPAND TO ARR.LENGTH IF ASSYMETRIC FUNCTION
+            if (arr[i][j] < min) {
+              min = arr[i][j];
+              indices = [i, j];
+            }
+          }
+        }
+        return [min, indices];
+      };
+      let minSimScore; let bestPair;
+      [minSimScore, bestPair] = getMaxSimIndices(simMatrix);
+      clusters.push(bestPair);
+      cluster_dists.push(minSimScore);
+      simMatrix[bestPair[0]][bestPair[1]] = Infinity;
+      
+      while (minSimScore<minSimScoreThreshold){
+        [minSimScore, bestPair] = getMaxSimIndices(simMatrix);
+        clusters.push(bestPair);
+        cluster_dists.push(minSimScore);
+        simMatrix[bestPair[0]][bestPair[1]] = Infinity;
+      }
+      
+      // only output that is used is simMatrix_unmodified
+      return {minSimScore, clusters, cluster_dists, simMatrix_unmodified}
+    }
+
+    const getCurrentGroupIdx = (sentenceID,groups) => {
+      for (let i = 0; i<groups.length; i++){
+        if (groups[i].includes(sentenceID)) {
+          return i
+        }
+      }
+      return -1
+    }
+
+    const addToGroups = (groups,pair) => {
+        let group_idx_pair0 = getCurrentGroupIdx(pair[0], groups)
+        let group_idx_pair1 = getCurrentGroupIdx(pair[1], groups)
+        if (group_idx_pair0 == -1 && group_idx_pair1 == -1) {
+          groups.push(pair);
+        } else if (group_idx_pair0 == group_idx_pair1){
+          return groups //do nothing!
+        } else if (group_idx_pair0 > -1 && group_idx_pair1 > -1) { // merging two groups
+          //WHICH IS BETTER FOR MINIMIZING DISTANCES OF ADJACENT GROUP MEMBERS---ADDING A TO B OR B TO A?
+          let end_of_group_a = groups[group_idx_pair0].slice(-1);
+          let start_of_group_b = groups[group_idx_pair1].slice(0,1);
+          let end_of_group_b = groups[group_idx_pair1].slice(-1);
+          let start_of_group_a = groups[group_idx_pair0].slice(0,1);
+
+          let dist_a_push_b = simMatrix[end_of_group_a][start_of_group_b];
+          let dist_b_push_a = simMatrix[end_of_group_b][start_of_group_a];
+
+          if (dist_a_push_b <= dist_b_push_a) {
+            let group_part_b = groups[group_idx_pair1];
+            for (let i = 0; i<group_part_b.length; i++){
+              groups[group_idx_pair0].push(group_part_b[i]);
+            }
+            groups.splice(group_idx_pair1,1); //removes the group was added elsewhere
+          } else {
+            let group_part_a = groups[group_idx_pair0];
+            for (let i = 0; i<group_part_a.length; i++){
+              groups[group_idx_pair1].push(group_part_a[i]);
+            }
+            groups.splice(group_idx_pair0,1); //removes the group was added elsewhere
+          }
+          // TODO: CONSIDER TESTING FOR MERGED CLUSTER PROPERTIES/STATS <<<<<<<<<<<<<<<<<<<<<<<<<<<<
+        } else if (group_idx_pair0 > -1){ // adding sent 1 to an existing group
+          let start_of_group = groups[group_idx_pair0].slice(0,1);
+          let end_of_group = groups[group_idx_pair0].slice(-1);
+          let dist_at_end_of_group = simMatrix[end_of_group][pair[1]];
+          let dist_at_start_of_group = simMatrix[pair[1]][start_of_group];
+          if (dist_at_start_of_group <= dist_at_end_of_group){
+            groups[group_idx_pair0].splice(0,0,pair[1]);
+          } else{
+            groups[group_idx_pair0].splice(groups[group_idx_pair0].length,0,pair[1]);
+          }
+        } else if (group_idx_pair1 > -1){ // adding sent 2 to an existing group
+          let start_of_group = groups[group_idx_pair1].slice(0,1);
+          let end_of_group = groups[group_idx_pair1].slice(-1);
+          let dist_at_end_of_group = simMatrix[end_of_group][pair[0]];
+          let dist_at_start_of_group = simMatrix[pair[0]][start_of_group];
+          if (dist_at_start_of_group <= dist_at_end_of_group){
+            groups[group_idx_pair1].splice(0,0,pair[0]);
+          } else {
+            groups[group_idx_pair1].splice(groups[group_idx_pair1].length,0,pair[0]);
+          }
+        }
+      return groups; // TODO: PUT IN LOGIC
+    }
+
+    const get_mean = (arr) => {
+        const sum = arr.reduce((a, b) => a + b, 0);
+        return (sum / arr.length);
+    }
+
+    const get_ordered_groups = (absolute_sim_dist_threshold, allSentences) => {
+      // this outputs the ordered clusters
+      let groups = [];
+      let ordered_pairs = get_pairs(absolute_sim_dist_threshold, allSentences).clusters;
+      for (let pair_idx = 0; pair_idx < ordered_pairs.length; pair_idx++) {
+        let pair = ordered_pairs[pair_idx];
+        let pair_loc_abs_diff = Math.abs(
+          allSentences[pair[0]].normalized_location -
+            allSentences[pair[1]].normalized_location
+        );
+        let pair_sim_dist = simMatrix[pair[0]][pair[1]]; // TODO: SAFEST IS TO CONSIDER BOTH DIRECTIONS OR MIN OF BOTH DIRECTIONS IF DISTANCE IS ASSYMMETRIC
+        if (a * pair_sim_dist + b * pair_loc_abs_diff < group_making_threshold) {
+          groups = addToGroups(groups, pair);
+          //return groups
+        }
+      }
+      // add singleton clusters to groups
+      let flattened_groups = groups.flat();
+      for (let i=0; i<allSentences.length; i++){
+        if (!flattened_groups.includes(i)){
+          groups.push([i]); // adds a singleton
+        }
+      }
+      //return groups
+
+      //now order it by average or median normalized location
+      //compute aggregate normalized location for each group
+      let ordered_groups = [];
+      let median_groups_locations = [];
+      let num_groups = groups.length;
+      for (let group_idx = 0; group_idx< num_groups; group_idx++){
+        let group_locations = [];
+        for (let intra_group_idx = 0; intra_group_idx<groups[group_idx].length; intra_group_idx++){
+          group_locations.push(allSentences[groups[group_idx][intra_group_idx]].normalized_location);
+        }
+        median_groups_locations.push(get_mean(group_locations));
+      }
+      //return median_groups_locations
+      
+      for (let i=0; i<num_groups; i++){
+        let next_group_idx = median_groups_locations.indexOf(Math.min(...median_groups_locations)); //TODO: TIE BREAK TO PUT SENTENCES FROM LONGER DOCS FIRST //update: using mean fixed this
+        ordered_groups.push(groups[next_group_idx]);
+        groups.splice(next_group_idx,1);
+        median_groups_locations.splice(next_group_idx,1);
+        //return median_groups_locations
+      }
+      
+      return ordered_groups;
+    }
+
+    const allSentences = compute_response_lengths_and_add_normalized_locations();
+    const simMatrix = get_pairs(absolute_sim_dist_threshold,allSentences).simMatrix_unmodified;
+    const pairs = get_pairs(absolute_sim_dist_threshold,allSentences).clusters;
+    const clusters = get_ordered_groups(absolute_sim_dist_threshold,allSentences);
+    console.log("allSentences", allSentences);
+    console.log("clusters", clusters);
+
     /*  SIMPLE AGGLOMERATIVE CLUSTERING
         Calculate matrix of similarity scores between all sentences.
         Find most similar two sentences; make them the first cluster.
@@ -551,8 +810,8 @@ const GridInspectNode = ({ data, id }) => {
         return [allSentences, clusters];
     }
 
-    const [allSentences, clusters] = getClusters();
-    console.log("allSentences", allSentences);
+    // const [allSentencesB, clusters] = getClusters();
+    // console.log("allSentences", allSentences);
 
     /* SIMPLE SENTENCE GROUPING (EXAMPLORE)
        Calculate the normalized position of each sentence in its response
@@ -744,7 +1003,8 @@ const GridInspectNode = ({ data, id }) => {
             }
         }
 
-        if (clusterId !== null) {
+
+        if (clusterId !== null && clusters[clusterId].length > 1) {
             return [true, getColorFromPalette(llmColorPalette, clusterId)]
         }
 

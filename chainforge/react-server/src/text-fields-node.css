@@ -139,7 +139,8 @@
     padding: 10px;
     border: 1px solid #999;
     border-radius: 5px;
-    width: 290px;
+    width: 400px;
+    resize: both;
   }
   
   .prompt-node textarea {
@@ -239,11 +240,11 @@
   .inspect-response-container {
     overflow-y: scroll;
     min-width: 150px;
-    width: 280px;
+    width: 1000px;
     min-height: 200px;
-    height: 200px;
-    max-width: 650px;
-    max-height: 650px;
+    height: 600px;
+    max-width: 2000px;
+    max-height: 2000px;
     resize: both;
   }
   .inspect-modal-response-container .response-var-header {
@@ -340,8 +341,9 @@
   }
 
   .small-response {
-    font-size: 8pt;
-    font-family: monospace;
+    font-size: .8em;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
     border-top-style: dashed;
     border-bottom-style: dashed;
     border-color: #fff;
@@ -349,6 +351,9 @@
     margin: 4px 3px;
     background-color: rgba(255, 255, 255, 0.4);
     white-space: pre-wrap;
+    cursor: text;
+    pointer-events: all;
+    user-select: text; 
   }
   .small-response-metrics {
     font-size: 8pt;

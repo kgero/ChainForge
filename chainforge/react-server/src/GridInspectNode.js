@@ -1201,17 +1201,6 @@ const GridInspectNode = ({ data, id }) => {
             {segmentedViewValue == "grid" ? gridHighlightingOptions : <></>}
         </div>
         
-        
-        <p></p>
-
-        
-
-        <Accordion variant="contained" defaultValue="" chevronPosition="left" chevronSize="15px" style={{margin: '20px'}}>
-          <Accordion.Item value="prompt">
-            <Accordion.Control style={{fontSize: '10pt', fontWeight: '400 !important'}}>Show prompt:</Accordion.Control>
-            <Accordion.Panel style={{fontSize: '10pt', whiteSpace: 'pre-line'}}>{prompt}</Accordion.Panel>
-          </Accordion.Item>
-        </Accordion>
 
         
         {segmentedViewValue == "grid" ? table : grouping}

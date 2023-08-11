@@ -619,7 +619,7 @@ const PromptNode = ({ data, id }) => {
     <LLMResponseInspectorModal ref={inspectModal} jsonResponses={jsonResponses} prompt={promptText} />
       <div className="input-field">
         <textarea
-          rows="4"
+          rows="12"
           cols="40"
           defaultValue={data.prompt}
           onChange={handleInputChange}

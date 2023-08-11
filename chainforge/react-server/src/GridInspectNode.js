@@ -23,13 +23,13 @@ const as = nlp.as;
 const llmColorPaletteSaturated = ['#44d044', '#f1b933', '#e46161', '#8888f9', '#33bef0', '#bb55f9', '#f7ee45', '#f955cd', '#26e080', '#2654e0', '#7d8191', '#bea5d1'];
 // https://coolors.co/44d044-f1b933-e46161-8888f9-33bef0-bb55f9-f7ee45-f955cd
 // +60 brightness
-// https://coolors.co/b4ecb4-f9e2ad-f4c0c0-cfcffc-ade5f9-e3bafd-fcf8b5-fdbaeb
-const llmColorPalette = ['#b4ecb4', '#f9e2ad', '#cfcffc', '#ade5f9', '#e3bafd', '#fcf8b5', '#fdbaeb', '#f955cd', '#26e080', '#2654e0', '#7d8191', '#bea5d1'];
+// https://coolors.co/b4ecb4-f9e2ad-f4c0c0-cfcffc-ade5f9-e3bafd-fcf8b5-fdbaeb-a8f3cc-a8baf3-cbcdd3-e5dbec
+const llmColorPalette = ['#b4ecb4', '#f9e2ad', '#cfcffc', '#ade5f9', '#e3bafd', '#fcf8b5', '#fdbaeb', '#fdbaeb', '#a8f3cc', '#a8baf3', '#cbcdd3', '#e5dbec'];
 // +60 brightness again
-// https://coolors.co/e2f8e2-fdf4df-fae5e5-ececfe-dff5fd-f4e3fe-fefce2-fee3f7
-const llmColorPaletteDesaturated = ['#e2f8e2', '#fdf4df', '#fae5e5', '#ececfe', '#dff5fd', '#f4e3fe', '#fefce2', '#fee3f7', '#26e080', '#2654e0', '#7d8191', '#bea5d1'];
+// https://coolors.co/e2f8e2-fdf4df-fae5e5-ececfe-dff5fd-f4e3fe-fefce2-fee3f7-ddfaeb-dde4fa-eaebed-f4f0f7
+const llmColorPaletteDesaturated = ['#e2f8e2', '#fdf4df', '#fae5e5', '#ececfe', '#dff5fd', '#f4e3fe', '#fefce2', '#fee3f7', '#ddfaeb', '#dde4fa', '#eaebed', '#f4f0f7'];
 
-/** The color palette used for displaying variations of prompts and prompt variables (non-LLM differences). 
+/** The color palette used for displaying variations of prompts and prompt variables (non-LLM differences).
  * Distinct from the LLM color palette in order to avoid confusion around what the data means.
  * Palette adapted from https://lospec.com/palette-list/sness by Space Sandwich */
 const varColorPalette = ['#0bdb52', '#e71861', '#7161de', '#f6d714', '#80bedb', '#ffa995', '#a9b399', '#dc6f0f', '#8d022e', '#138e7d', '#c6924f', '#885818', '#616b6d'];
@@ -96,6 +96,13 @@ const cosine_similarity = (vector1, vector2) => {
 
 const stop = [",", ";", ":", "?", "!", "(", ")", "i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your", "yours", "yourself", "yourselves", "he", "him", "his", "himself", "she", "her", "hers", "herself", "it", "its", "itself", "they", "them", "their", "theirs", "themselves", "what", "which", "who", "whom", "this", "that", "these", "those", "am", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "having", "do", "does", "did", "doing", "a", "an", "the", "and", "but", "if", "or", "because", "as", "until", "while", "of", "at", "by", "for", "with", "about", "against", "between", "into", "through", "during", "before", "after", "above", "below", "to", "from", "up", "down", "in", "out", "on", "off", "over", "under", "again", "further", "then", "once", "here", "there", "when", "where", "why", "how", "all", "any", "both", "each", "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "s", "t", "can", "will", "just", "don", "should", "now"];
 
+
+const getColorFromPalette = (palette, index) => {
+    if (index < palette.length) {
+        return palette[index];
+    }
+    return palette[index % palette.length];
+}
 
 const GridInspectNode = ({ data, id }) => {
 
@@ -273,10 +280,25 @@ const GridInspectNode = ({ data, id }) => {
             let maxN = Math.max(...locations.map((location) => location.n));
             let count = locations.length;
             return [string, locations, maxN, count];
-        });
+        }).filter(([, , maxN]) => maxN > 2);
+        // console.log("pairs", pairs);
+
+        // Remove overlaps that have n < 3
 
         // Sort by max n, in descending order, then by count, also in descending order
-        pairs.sort((a, b) => b[2] - a[2] || b[3] - a[3]);
+        // !! reversing this, sort first by count, then by max n
+        // pairs.sort((a, b) => b[2] - a[2] || b[3] - a[3]);
+        // pairs.sort((a, b) => b[3] - a[3] || b[2] - a[2]);
+
+        // try a weighted combo, instead of ordering by one and then the other
+        // suggested by ChatGPT lol
+        const weightForMaxN = 0.5;  // You can adjust this value to emphasize or de-emphasize maxN
+        const weightForCount = 1 - weightForMaxN;  // Makes sure the two weights sum up to 1
+
+        pairs.sort((a, b) =>
+            (b[2] * weightForMaxN + b[3] * weightForCount) -
+            (a[2] * weightForMaxN + a[3] * weightForCount)
+        );
 
         // Get top k overlaps
         let topKoverlaps = {};
@@ -354,7 +376,6 @@ const GridInspectNode = ({ data, id }) => {
             const sentenceTokens = sentencesOut.map((text) => tokenize(text));
             const flatTokens = sentenceTokens.flat();
             const lemmas = flatTokens.map((token) => nlp.readDoc(token).tokens().out(its.lemma)[0]);
-            console.log("lemmas", lemmas);
             let indices = [];
             let counter = 0;
 
@@ -633,7 +654,8 @@ const GridInspectNode = ({ data, id }) => {
     // const rowLCS = gridResponses.map((row) => findOverlap(row.map((cell) => cell.responseTokenized), 5));
     // const colLCS = gridResponses[0].map((_, i) => findOverlap(gridResponses.map((row) => row[i].responseTokenized), 5));
     // const allLCS = findOverlap(gridResponses.flatMap(item => item).map(item => item.responseTokenized), 5);
-    const allLCS = findOverlap(jsonResponsesMod.map(item => item.responseTokenized), 5);
+    const numOverlaps = Math.min(Math.floor(jsonResponsesMod.length / 2), llmColorPalette.length-1);
+    const allLCS = findOverlap(jsonResponsesMod.map(item => item.responseTokenized), numOverlaps);
     const allLCS_colors = getColors(allLCS);
     console.log("allLCS", allLCS);
     console.log("allLCS_colors", allLCS_colors);
@@ -683,10 +705,11 @@ const GridInspectNode = ({ data, id }) => {
         const currTokenLemma = cell.responseLemmas[tokenIndex];
         if (tfidfArray[cell.index].includes(currTokenLemma)) {
             let colorIndex = cell.index;
-            if (colorIndex >= llmColorPalette.length) {
-                colorIndex = colorIndex - llmColorPalette.length;
-            }
-            return [true, llmColorPalette[colorIndex]];
+            // if (colorIndex >= llmColorPalette.length) {
+            //     colorIndex = colorIndex - llmColorPalette.length;
+            // }
+            // return [true, llmColorPalette[colorIndex]];
+            return [true, getColorFromPalette(llmColorPalette, colorIndex)];
         }
         return [false, null];
     }
@@ -722,7 +745,7 @@ const GridInspectNode = ({ data, id }) => {
         }
 
         if (clusterId !== null) {
-            return [true, llmColorPalette[clusterId]]
+            return [true, getColorFromPalette(llmColorPalette, clusterId)]
         }
 
         return [false, null];
@@ -743,16 +766,27 @@ const GridInspectNode = ({ data, id }) => {
                                 let highlight = false; 
                                 let oddEven = false;
                                 let color = null;
+                                let spanStyle;
+
                                 if (highlightRadioValue === "lcs") {
                                     [highlight, color] = shouldHighlightAllNgrams(cell, tokenIndex);
                                 }
                                 else if (highlightRadioValue === "tfidf") {
                                     [highlight, color] = shouldHighlightTfidf(cell, tokenIndex);
+                                    // color = null;
+                                    // if (highlight) {
+                                    //     spanStyle = {fontWeight: "bold"}
+                                    //     highlight = false;
+                                    //     console.log("tfidf highlighting");
+                                    // }
+                                    
                                 }
                                 else if (highlightRadioValue === "sent") {
                                     [highlight, color] = shouldHighlightSentence(cell, tokenIndex);
                                 }
-                                let spanStyle = highlight ? {backgroundColor: oddEven ? 'thistle' : 'plum'} : {};
+
+                                // spanStyle = highlight ? {backgroundColor: oddEven ? 'thistle' : 'plum'} : {};
+                                
                                 if (color) {
                                     spanStyle = {backgroundColor: color}
                                 }
@@ -787,7 +821,7 @@ const GridInspectNode = ({ data, id }) => {
     const groupColorOptions = [...new Set(jsonResponsesMod.map((obj) => obj.vars[groupColor]))];
 
     const groupColorOptionsDisplay = groupColorOptions.map((colorOption, colorIndex) => {
-        const spanStyle = {backgroundColor: llmColorPalette[colorIndex]};
+        const spanStyle = {backgroundColor: getColorFromPalette(llmColorPalette, colorIndex)};
         const thisKey = {colorOption} + "-" + {colorIndex}
         return (
             <>
@@ -856,7 +890,7 @@ const GridInspectNode = ({ data, id }) => {
             
             return (
                 <p key={sentId} className="sentenceP">
-                <span style={{backgroundColor: llmColorPalette[respColorIndex]}}>&nbsp;&nbsp;&nbsp;</span>
+                <span style={{backgroundColor: getColorFromPalette(llmColorPalette, respColorIndex)}}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
                 <span>&nbsp;</span>
                 {filteredTokenIndices.map((tokenIndex, mappedTokenIndex) => {
 

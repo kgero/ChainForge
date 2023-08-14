@@ -460,6 +460,7 @@ const GridInspectNode = ({ data, id }) => {
     const group_making_threshold = 1.2;
     const a = 1.5; //relative weight on content similarity
     const b = 1; //relative weight on location coherence (less important than content, I think)
+    const percentage_same_response_threshold = 0.1;
 
     // modifying allSentences; doesn't use response_lengths
     const compute_response_lengths_and_add_normalized_locations = () => { 
@@ -596,6 +597,18 @@ const GridInspectNode = ({ data, id }) => {
       return -1
     }
 
+    const getPercentageSharedResponses = (groupA,groupB) => {
+      let responses_included = [];
+      for (let i = 0; i<groupA.length; i++){
+        responses_included.push(allSentences[groupA[i]].respIndex);
+      }
+      for (let i = 0; i<groupB.length; i++){
+        responses_included.push(allSentences[groupB[i]].respIndex);
+      }
+      let responses_included_unique = Array.from(new Set(responses_included));
+      return 1-(responses_included_unique.length/responses_included.length)
+    }
+
     const addToGroups = (groups,pair) => {
         let group_idx_pair0 = getCurrentGroupIdx(pair[0], groups)
         let group_idx_pair1 = getCurrentGroupIdx(pair[1], groups)
@@ -603,7 +616,13 @@ const GridInspectNode = ({ data, id }) => {
           groups.push(pair);
         } else if (group_idx_pair0 == group_idx_pair1){
           return groups //do nothing!
-        } else if (group_idx_pair0 > -1 && group_idx_pair1 > -1) { // merging two groups
+        } else if (group_idx_pair0 > -1 && group_idx_pair1 > -1) {
+
+          //TODO: WHAT PERCENTAGE OF SENTENCES IN THIS CLUSTER SHARE A RESPONSE? IF 30% OR MORE SHARE THE SAME RESPONSE WHEN COMBINED, DON'T COMBINE
+          if (getPercentageSharedResponses(groups[group_idx_pair0],groups[group_idx_pair1]) > percentage_same_response_threshold) {
+            return groups
+          }
+          
           //WHICH IS BETTER FOR MINIMIZING DISTANCES OF ADJACENT GROUP MEMBERS---ADDING A TO B OR B TO A?
           let end_of_group_a = groups[group_idx_pair0].slice(-1);
           let start_of_group_b = groups[group_idx_pair1].slice(0,1);
@@ -626,8 +645,13 @@ const GridInspectNode = ({ data, id }) => {
             }
             groups.splice(group_idx_pair0,1); //removes the group was added elsewhere
           }
-          // TODO: CONSIDER TESTING FOR MERGED CLUSTER PROPERTIES/STATS <<<<<<<<<<<<<<<<<<<<<<<<<<<<
-        } else if (group_idx_pair0 > -1){ // adding sent 1 to an existing group
+          //TODO: CONSIDER TESTING FOR MERGED CLUSTER PROPERTIES/STATS
+        } else if (group_idx_pair0 > -1){
+
+          if (getPercentageSharedResponses(groups[group_idx_pair0],[pair[1]]) > percentage_same_response_threshold) {
+            return groups
+          }
+          
           let start_of_group = groups[group_idx_pair0].slice(0,1);
           let end_of_group = groups[group_idx_pair0].slice(-1);
           let dist_at_end_of_group = simMatrix[end_of_group][pair[1]];
@@ -637,7 +661,14 @@ const GridInspectNode = ({ data, id }) => {
           } else{
             groups[group_idx_pair0].splice(groups[group_idx_pair0].length,0,pair[1]);
           }
-        } else if (group_idx_pair1 > -1){ // adding sent 2 to an existing group
+          //TODO: CONSIDER TESTING FOR MERGED CLUSTER PROPERTIES/STATS
+          //TODO: WHAT PERCENTAGE OF SENTENCES IN THIS CLUSTER SHARE A RESPONSE? IF 30% OR MORE SHARE THE SAME RESPONSE WHEN COMBINED, DON'T COMBINE
+        } else if (group_idx_pair1 > -1){
+
+          if (getPercentageSharedResponses(groups[group_idx_pair1],[pair[0]]) > percentage_same_response_threshold) {
+            return groups
+          }
+          
           let start_of_group = groups[group_idx_pair1].slice(0,1);
           let end_of_group = groups[group_idx_pair1].slice(-1);
           let dist_at_end_of_group = simMatrix[end_of_group][pair[0]];
@@ -647,8 +678,10 @@ const GridInspectNode = ({ data, id }) => {
           } else {
             groups[group_idx_pair1].splice(groups[group_idx_pair1].length,0,pair[0]);
           }
+          //TODO: CONSIDER TESTING FOR MERGED CLUSTER PROPERTIES/STATS
+          //TODO: WHAT PERCENTAGE OF SENTENCES IN THIS CLUSTER SHARE A RESPONSE? IF 30% OR MORE SHARE THE SAME RESPONSE WHEN COMBINED, DON'T COMBINE
         }
-      return groups; // TODO: PUT IN LOGIC
+      return groups; //TODO: PUT IN LOGIC
     }
 
     const get_mean = (arr) => {
@@ -823,7 +856,7 @@ const GridInspectNode = ({ data, id }) => {
             //     colorIndex = colorIndex - llmColorPalette.length;
             // }
             // return [true, llmColorPalette[colorIndex]];
-            return [true, getColorFromPalette(llmColorPalette, colorIndex)];
+            return [true, "#FFFF8F"];
         }
         return [false, null];
     }

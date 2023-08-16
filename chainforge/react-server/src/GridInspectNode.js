@@ -292,7 +292,7 @@ const GridInspectNode = ({ data, id }) => {
 
         // try a weighted combo, instead of ordering by one and then the other
         // suggested by ChatGPT lol
-        const weightForMaxN = 0.5;  // You can adjust this value to emphasize or de-emphasize maxN
+        const weightForMaxN = 0.75;  // You can adjust this value to emphasize or de-emphasize maxN
         const weightForCount = 1 - weightForMaxN;  // Makes sure the two weights sum up to 1
 
         pairs.sort((a, b) =>
@@ -907,7 +907,7 @@ const GridInspectNode = ({ data, id }) => {
     const cells = gridResponses.map((row, rowIndex) => {
         return (
             <tr>
-                <th>{row_names[rowIndex]}</th>
+                <th><span class="rowName">{row_names[rowIndex]}</span></th>
                 {row.map((cell, cellIndex) => (
                     <td key={cellIndex}>
                             {cell.responseTokenized.map((token, tokenIndex) => {

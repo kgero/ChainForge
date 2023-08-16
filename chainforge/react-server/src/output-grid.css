@@ -19,13 +19,20 @@ td {
 	border-radius: 0.25rem;
 	min-width: 170px;
 	min-height: 170px;
-	padding: 30px 10px 30px 10px;
+	padding: 10px 10px 10px 10px;
 	vertical-align: middle;
 	font-size: .8em;
 	cursor: text;
 	pointer-events: all;
 	user-select: text; 
 }  
+span.rowName {
+  -ms-writing-mode: tb-rl;
+  -webkit-writing-mode: vertical-rl;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+}
 p.prompt {
 	text-align: center;
 	font-weight: bold;

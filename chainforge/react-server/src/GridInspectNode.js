@@ -6,8 +6,6 @@ import {BASE_URL} from './store';
 import { Container, Grid, Select, Radio, NumberInput, Group, Paper, Text, Accordion, SegmentedControl } from '@mantine/core';
 import './output-grid.css';
 
-import embeddingsFilePath from './nlp_models/glove.6B.50d.10k.txt';
-
 import winkNLP from 'wink-nlp'
 import winkModel from 'wink-eng-lite-web-model'
 import BM25Vectorizer from 'wink-nlp/utilities/bm25-vectorizer'
@@ -34,64 +32,6 @@ const llmColorPaletteDesaturated = ['#e2f8e2', '#fdf4df', '#fae5e5', '#ececfe', 
  * Palette adapted from https://lospec.com/palette-list/sness by Space Sandwich */
 const varColorPalette = ['#0bdb52', '#e71861', '#7161de', '#f6d714', '#80bedb', '#ffa995', '#a9b399', '#dc6f0f', '#8d022e', '#138e7d', '#c6924f', '#885818', '#616b6d'];
 
-// inspired by https://github.com/sauravjoshi23/GloVe-Embeddings-NLP-JS/tree/master
-// returns an object where each key is a word and the value is the vector
-const load_embeddings = (textdata) => {
-    // let data = fs.readFileSync('./nlp_models/glove.6B.50d.10k.txt')
-    let data = textdata;
-    data = data.toString()
-    data = data.split("\n")
-
-    let glove_embeddings = {}
-    for(var i=0; i<data.length;i++){
-        let values = data[i]
-        //tokenize -> separate word and vector
-        let tokens = values.split(' ')
-        let word = tokens.slice(0,1)[0];
-        let vect = tokens.slice(1,);
-        // coverting string to int
-        let int_vect = []
-        for(var j=0; j<vect.length;j++){
-            var num = Number(vect[j]);
-            int_vect.push(num);
-        }
-        glove_embeddings[word] = int_vect;
-    }
-    return glove_embeddings
-}
-
-
-const dot_product = (vector1, vector2) => {
-    if (vector1 == null || vector2 == null) {
-        return null;
-    }
-    let result = 0;
-    let length = vector1.length;
-    for (let i = 0; i < length; i++) {
-      result += vector1[i] * vector2[i];
-    }
-    return result;
-}
-
-const den_calculation = (vector) => {
-    let sum = 0;
-    let length = vector.length;
-    for (let i = 0; i < length; i++) {
-      sum += vector[i] * vector[i];
-    }
-    let result = Math.sqrt(sum);
-    return result;
-}
-
-const cosine_similarity = (vector1, vector2) => {
-    let num = dot_product(vector1, vector2);
-    if (num == null) {return null;}
-    let den1 = den_calculation(vector1);
-    let den2 = den_calculation(vector2);
-    let den = den1*den2;
-    let cos_sim = num/den;
-    return cos_sim;
-}
 
 
 const stop = [",", ";", ":", "?", "!", "(", ")", "i", "me", "my", "myself", "we", "our", "ours", "ourselves", "you", "your", "yours", "yourself", "yourselves", "he", "him", "his", "himself", "she", "her", "hers", "herself", "it", "its", "itself", "they", "them", "their", "theirs", "themselves", "what", "which", "who", "whom", "this", "that", "these", "those", "am", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "having", "do", "does", "did", "doing", "a", "an", "the", "and", "but", "if", "or", "because", "as", "until", "while", "of", "at", "by", "for", "with", "about", "against", "between", "into", "through", "during", "before", "after", "above", "below", "to", "from", "up", "down", "in", "out", "on", "off", "over", "under", "again", "further", "then", "once", "here", "there", "when", "where", "why", "how", "all", "any", "both", "each", "few", "more", "most", "other", "some", "such", "no", "nor", "not", "only", "own", "same", "so", "than", "too", "very", "s", "t", "can", "will", "just", "don", "should", "now"];
@@ -108,24 +48,22 @@ const GridInspectNode = ({ data, id }) => {
 
   let is_fetching = false;
 
-  const [embeddings, setEmbeddings] = useState('');
-
-  useEffect(() => {
-    fetch(embeddingsFilePath)
-      .then(response => response.text())
-      .then(data => {
-        let embdata = load_embeddings(data);
-        setEmbeddings(embdata);
-      });
-  }, []);  // Empty dependency array
-
   const [visualization, setVisualization] = useState([]);
+
   const [jsonResponses, setJSONResponses] = useState(null);
+  const [jsonResponsesMod, setJSONResponsesMod] = useState([]);
+  const jsonResponsesModRef = useRef();
+  const [clusters, setClusters] = useState(null);
+  const clustersRef = useRef(null);
+  const [allSentences, setAllSentences] = useState(null);
+  const allSentencesRef = useRef(null);
+
 
   const [pastInputs, setPastInputs] = useState([]);
   const inputEdgesForNode = useStore((state) => state.inputEdgesForNode);
   const setDataPropsForNode = useStore((state) => state.setDataPropsForNode);
 
+  // viz component values
   const [columnValue, setColumnValue] = useState([]);
   const [rowValue, setRowValue] = useState([]);
   const [altValues, setAltValues] = useState([]);
@@ -133,234 +71,33 @@ const GridInspectNode = ({ data, id }) => {
   const [groupColor, setGroupColor] = useState([]);
   const [segmentedViewValue, setSegmentedViewValue] = useState('grid');
 
+  // small helper functions
+  // return a new json object where the keys are the same as the input
+  // json and the values are unique hex colors based on llmColorPalette
+  const getColors = (json) => {
+    let colors = {};
+    let counter = 0;
+    for (const key in json) {
+        colors[key] = llmColorPalette[counter];
+        counter++;
+    }
+    return colors;
+  }
 
+  // white space based tokenization
+  const tokenize = (string) => {
+    string = string.replaceAll("\n", " \n ");
+    return string.split(" ");
+  }
 
-  // Update the visualization whenever 'jsonResponses' changes:
+  // Update 'jsonResponsesMod' only when 'jsonResponses' changes:
   useEffect(() => {
     if (!jsonResponses || (Array.isArray(jsonResponses) && jsonResponses.length === 0))
         return;
 
-    // === Construct a visualization using jsonResponses here ===
-    // ....
+    // === Do heavy processing on jsonResponses here ===
 
-
-    console.log("similarity of dog and cat", cosine_similarity(embeddings["cat"], embeddings["dog"]));
-    console.log("similarity of dog and table", cosine_similarity(embeddings["table"], embeddings["dog"]));
-
-
-     // Returns length of longest common substring of X[0..m-1] and Y[0..n-1]
-    const LCSubStr = (X, Y) => {
-        // Create a table to store lengths of longest common suffixes of substrings.
-        // Note that LCSuff[i][j] contains length of longest common suffix of
-        // X[0..i-1] and Y[0..j-1]. The first row and first column entries have no
-        // logical meaning, they are used only for simplicity of program
-        // based on https://www.geeksforgeeks.org/longest-common-substring-dp-29/
-
-        const m = X.length;
-        const n = Y.length;
-
-        var LCSuff = Array(m + 1).fill().map(()=>Array(n + 1).fill(0));
-
-        // To store length of the longest common substring
-        var result = 0;
-
-        // To store the index of the cell which contains the maximum value.
-        // This cell's index helps in building up the longest common substring
-        // from right to left.
-        let row = 0, col = 0;
-
-        // Following steps build LCSuff[m+1][n+1] in bottom up fashion
-        for (let i = 0; i <= m; i++) {
-            for (let j = 0; j <= n; j++) {
-                if (i == 0 || j == 0)
-                    LCSuff[i][j] = 0;
-                else if (X[i - 1] == Y[j - 1]) {
-                    LCSuff[i][j] = LCSuff[i - 1][j - 1] + 1;
-                    if (result < LCSuff[i][j]) {
-                        result = LCSuff[i][j];
-                        row = i;
-                        col = j;
-                    }
-                } else
-                    LCSuff[i][j] = 0;
-            }
-        }
-        if (result == 0) {
-            console.log("No common substring."); // DEAL WITH THIS CASE
-        }
-        let resultStr = [];
-        while (LCSuff[row][col] != 0) {
-            resultStr.unshift(X[row-1]);
-            --result;
-            row--;
-            col--;
-        }
-        return {"string": resultStr, "x": row, "y": col};
-    }
-
-    /*
-       responses is an array of responseTokenized;
-       k is the number of unique text strings to return;
-
-       returns dict of overlapping strings and their locations in the format:
-
-       {"text of string": [
-            {i: index of response string occurs in,
-             j: index of token in response where string starts,
-             n: number of tokens in string}
-       ]}
-    */
-    const findOverlap = (responses, k) => {
-        if (responses.length <= 1) { return {}; }
-        let overlaps = {}
-        for (let i = 0; i < responses.length-1; i++) {
-            for (let j = i+1; j < responses.length; j++) {
-                let lcs = LCSubStr(responses[i], responses[j]);
-                // check if lcs crosses sentence boundary
-                // either return final object or two final objects to add
-                const crossSentBoundary = (respIndex, tokenIndex, numTokens, lcsString) => {
-                    // console.log("crossSentBoundary", respIndex, tokenIndex, numTokens, lcsString);
-                    const sentObj = jsonResponsesMod[respIndex].sentences;
-                    // console.log("sentObj", sentObj);
-                    for (let k=0; k < sentObj.length; k++) {
-                        // console.log("sentObj[k]", sentObj[k]);
-                        // console.log("sentObj[k+1]", sentObj[k+1]);
-                        if (!sentObj[k].tokenIndices.includes(tokenIndex)) {
-                            // string is not in this sentence
-                            continue;
-                        } else if (sentObj[k].tokenIndices.includes(tokenIndex+numTokens-1)) {
-                            // doesn't cross sentence boundary
-                            return [{"i": respIndex, "j": tokenIndex, "n": numTokens, "str": lcsString}];
-                        } else {
-                            // crosses sentence boundary
-                            const firstN = sentObj[k].tokenIndices.length - sentObj[k].tokenIndices.indexOf(tokenIndex);
-                            const secondN = numTokens - firstN;
-                            const secondTokenIndex = sentObj[k+1].tokenIndices[0];
-                            const firstString = jsonResponsesMod[respIndex].responseTokenized.slice(tokenIndex, tokenIndex + firstN);
-                            const secondString = jsonResponsesMod[respIndex].responseTokenized.slice(secondTokenIndex, secondTokenIndex + secondN);
-                            // console.log('crossSentBoundary', k, lcsString, firstN, secondN);
-                            return [
-                                {"i": respIndex, "j": tokenIndex, "n": firstN, "str": firstString},
-                                {"i": respIndex, "j": secondTokenIndex, "n": secondN, "str": secondString}
-                                ];
-                        }
-                    }
-
-                }
-                const firstAdd = crossSentBoundary(i, lcs.x, lcs.string.length, lcs.string);
-                const secondAdd = crossSentBoundary(j, lcs.y, lcs.string.length, lcs.string);
-                const adds = firstAdd.concat(secondAdd);
-                // console.log("adds", adds);
-
-                for (let a=0; a<adds.length; a++) {
-                    if (!overlaps.hasOwnProperty(adds[a].str)) {
-                        overlaps[adds[a].str] = [];
-                    }
-                    overlaps[adds[a].str].push(adds[a])
-                }
-
-                // Old implementation before breaking on sentence boundaries
-
-                // if (!overlaps.hasOwnProperty(lcs.string)) {
-                //     overlaps[lcs.string] = []
-                // }
-                // overlaps[lcs.string].push({"i": i, "j": lcs.x, "n": lcs.string.length})
-                // overlaps[lcs.string].push({"i": j, "j": lcs.y, "n": lcs.string.length})
-                // overlaps[lcs.string]
-            }
-        }
-        for (const key in overlaps) {
-            if (overlaps[key].length === 1) {
-                delete overlaps[key];
-            }
-        }
-        console.log("overlaps", overlaps);
-        // Convert to [key, value] pairs and calculate max n for each overlap
-        let pairs = Object.entries(overlaps).map(([string, locations]) => {
-            let maxN = Math.max(...locations.map((location) => location.n));
-            let count = locations.length;
-            return [string, locations, maxN, count];
-        }).filter(([, , maxN]) => maxN > 2);
-        // console.log("pairs", pairs);
-
-        // Remove overlaps that have n < 3
-
-        // Sort by max n, in descending order, then by count, also in descending order
-        // !! reversing this, sort first by count, then by max n
-        // pairs.sort((a, b) => b[2] - a[2] || b[3] - a[3]);
-        // pairs.sort((a, b) => b[3] - a[3] || b[2] - a[2]);
-
-        // try a weighted combo, instead of ordering by one and then the other
-        // suggested by ChatGPT lol
-        const weightForMaxN = 0.75;  // You can adjust this value to emphasize or de-emphasize maxN
-        const weightForCount = 1 - weightForMaxN;  // Makes sure the two weights sum up to 1
-
-        pairs.sort((a, b) =>
-            (b[2] * weightForMaxN + b[3] * weightForCount) -
-            (a[2] * weightForMaxN + a[3] * weightForCount)
-        );
-
-        // Get top k overlaps
-        let topKoverlaps = {};
-        let blockedIndices = Array(responses.length)
-            .fill()
-            .map(() => new Set());
-
-        for (let i = 0; i < pairs.length; ++i) {
-            const [string, locations] = pairs[i];
-
-            if (locations.length === 1) {
-              continue;
-            }
-
-            // check if a string is overlapping with an already-added string
-            let overlapped = false;
-
-            for (const location of locations) {
-              for (let idx = location.j; idx < location.j + location.n; idx++) {
-                if (blockedIndices[location.i].has(idx)) {
-                  overlapped = true;
-                  break;
-                }
-              }
-              if (overlapped) break;
-            }
-
-            if (!overlapped) {
-              topKoverlaps[string] = locations;
-              if (Object.keys(topKoverlaps).length === k) break;
-
-              for (const location of locations) {
-                for (let idx = location.j; idx < location.j + location.n; idx++) {
-                  blockedIndices[location.i].add(idx);
-                }
-              }
-            }
-        }
-
-
-        return topKoverlaps;
-    }
-
-    // return a new json object where the keys are the same as the input
-    // json and the values are unique hex colors based on llmColorPalette
-    const getColors = (json) => {
-        let colors = {};
-        let counter = 0;
-        for (const key in json) {
-            colors[key] = llmColorPalette[counter];
-            counter++;
-        }
-        return colors;
-    }
-
-    // white space based tokenization
-    const tokenize = (string) => {
-        string = string.replaceAll("\n", " \n ");
-        return string.split(" ");
-    }
-
-    console.log("CUSTOM INSPECT NODE");
+    console.log("UPDATING JSONRESPONSES");
     console.log('jsonResponses', jsonResponses);
     // first create an object for each response, copying all other attributes
     // (originally 'response' is a list of responses, but creating one per object makes some other logic simpler)
@@ -407,51 +144,8 @@ const GridInspectNode = ({ data, id }) => {
         })
     );
     console.log('jsonResponsesMod', jsonResponsesMod);
-
-    // function to learn the bm25 vectors
-    const getBm25Vectors = () => {
-        const bm25 = BM25Vectorizer();
-        const corpus = jsonResponsesMod.map((obj) => obj.response);
-        corpus.forEach((doc) => bm25.learn(nlp.readDoc(doc).tokens().out(its.lemma)));;
-        return bm25;
-    }
-
-    // calcualte idf arrays for each vector
-    const getIdfArray = (bm25) => {
-        // pull out tf-idf and top terms
-        const idf_array = bm25.out(its.idf);
-        const idf_obj = idf_array.reduce((obj, [key, val]) => {
-            obj[key] = val;
-            return obj;
-        }, {});
-        return idf_obj;
-    }
-
-    // calculate tf-idf for doc i and return top n scoring terms
-    const topTfidfTerms = (i, n) => {
-        const tf = bm25.doc(i).out(its.tf);
-        const tfidf = tf.map((arr) => [arr[0], arr[1]*idf_obj[arr[0]]])
-        tfidf.sort((a, b) => b[1] - a[1]);
-        let top = tfidf.slice(0, n);
-        return top.map(term => term[0]);
-    };
-
-    // function to remove stopwords from tfidfArray
-    const removeStopWords = (outputArray, stopWords, n) => {
-        const updatedArray = outputArray.map(innerArray => {
-            return innerArray.filter(word => !stopWords.includes(word));
-        });
-        return updatedArray;
-    }
-
-    const bm25 = getBm25Vectors();
-    const idf_obj = getIdfArray(bm25);
-    const baseTfidfArray = [...Array(jsonResponsesMod.length).keys()].map((i) => topTfidfTerms(i, 10));
-    const tfidfN = 5;
-    const tfidfArray = removeStopWords(baseTfidfArray, stop).map((arr) => arr.slice(0,tfidfN));
-
-    console.log('idf_obj', idf_obj);
-    console.log('tfidfArray', tfidfArray);
+    setJSONResponsesMod(jsonResponsesMod);
+    jsonResponsesModRef.current = jsonResponsesMod;
 
 
     /*  BETTER CLUSTERING
@@ -746,6 +440,270 @@ const GridInspectNode = ({ data, id }) => {
     console.log("allSentences", allSentences);
     console.log("clusters", clusters);
 
+    setClusters(clusters);
+    clustersRef.current = clusters;
+
+    setAllSentences(allSentences);
+    allSentencesRef.current = allSentences;
+
+  }, [jsonResponses]);
+
+  // Update the viz component when the viz values change:
+  useEffect(() => {
+
+
+    let jsonResponsesMod = jsonResponsesModRef.current;
+
+    if (!jsonResponsesMod || (Array.isArray(jsonResponsesMod) && jsonResponsesMod.length === 0))
+        return;
+
+    let clusters = clustersRef.current;
+    let allSentences = allSentencesRef.current;
+
+    console.log("UPDATING VIZ VALUES");
+    console.log('jsonResponsesMod', jsonResponsesMod);
+
+    // Returns length of longest common substring of X[0..m-1] and Y[0..n-1]
+    const LCSubStr = (X, Y) => {
+        // Create a table to store lengths of longest common suffixes of substrings.
+        // Note that LCSuff[i][j] contains length of longest common suffix of
+        // X[0..i-1] and Y[0..j-1]. The first row and first column entries have no
+        // logical meaning, they are used only for simplicity of program
+        // based on https://www.geeksforgeeks.org/longest-common-substring-dp-29/
+
+        const m = X.length;
+        const n = Y.length;
+
+        var LCSuff = Array(m + 1).fill().map(()=>Array(n + 1).fill(0));
+
+        // To store length of the longest common substring
+        var result = 0;
+
+        // To store the index of the cell which contains the maximum value.
+        // This cell's index helps in building up the longest common substring
+        // from right to left.
+        let row = 0, col = 0;
+
+        // Following steps build LCSuff[m+1][n+1] in bottom up fashion
+        for (let i = 0; i <= m; i++) {
+            for (let j = 0; j <= n; j++) {
+                if (i == 0 || j == 0)
+                    LCSuff[i][j] = 0;
+                else if (X[i - 1] == Y[j - 1]) {
+                    LCSuff[i][j] = LCSuff[i - 1][j - 1] + 1;
+                    if (result < LCSuff[i][j]) {
+                        result = LCSuff[i][j];
+                        row = i;
+                        col = j;
+                    }
+                } else
+                    LCSuff[i][j] = 0;
+            }
+        }
+        if (result == 0) {
+            console.log("No common substring."); // DEAL WITH THIS CASE
+        }
+        let resultStr = [];
+        while (LCSuff[row][col] != 0) {
+            resultStr.unshift(X[row-1]);
+            --result;
+            row--;
+            col--;
+        }
+        return {"string": resultStr, "x": row, "y": col};
+    }
+
+    /*
+       responses is an array of responseTokenized;
+       k is the number of unique text strings to return;
+
+       returns dict of overlapping strings and their locations in the format:
+
+       {"text of string": [
+            {i: index of response string occurs in,
+             j: index of token in response where string starts,
+             n: number of tokens in string}
+       ]}
+    */
+    const findOverlap = (responses, k) => {
+        if (responses.length <= 1) { return {}; }
+        let overlaps = {}
+        for (let i = 0; i < responses.length-1; i++) {
+            for (let j = i+1; j < responses.length; j++) {
+                let lcs = LCSubStr(responses[i], responses[j]);
+                // check if lcs crosses sentence boundary
+                // either return final object or two final objects to add
+                const crossSentBoundary = (respIndex, tokenIndex, numTokens, lcsString) => {
+                    // console.log("crossSentBoundary", respIndex, tokenIndex, numTokens, lcsString);
+                    const sentObj = jsonResponsesMod[respIndex].sentences;
+                    // console.log("sentObj", sentObj);
+                    for (let k=0; k < sentObj.length; k++) {
+                        // console.log("sentObj[k]", sentObj[k]);
+                        // console.log("sentObj[k+1]", sentObj[k+1]);
+                        if (!sentObj[k].tokenIndices.includes(tokenIndex)) {
+                            // string is not in this sentence
+                            continue;
+                        } else if (sentObj[k].tokenIndices.includes(tokenIndex+numTokens-1)) {
+                            // doesn't cross sentence boundary
+                            return [{"i": respIndex, "j": tokenIndex, "n": numTokens, "str": lcsString}];
+                        } else {
+                            // crosses sentence boundary
+                            const firstN = sentObj[k].tokenIndices.length - sentObj[k].tokenIndices.indexOf(tokenIndex);
+                            const secondN = numTokens - firstN;
+                            const secondTokenIndex = sentObj[k+1].tokenIndices[0];
+                            const firstString = jsonResponsesMod[respIndex].responseTokenized.slice(tokenIndex, tokenIndex + firstN);
+                            const secondString = jsonResponsesMod[respIndex].responseTokenized.slice(secondTokenIndex, secondTokenIndex + secondN);
+                            // console.log('crossSentBoundary', k, lcsString, firstN, secondN);
+                            return [
+                                {"i": respIndex, "j": tokenIndex, "n": firstN, "str": firstString},
+                                {"i": respIndex, "j": secondTokenIndex, "n": secondN, "str": secondString}
+                                ];
+                        }
+                    }
+
+                }
+                const firstAdd = crossSentBoundary(i, lcs.x, lcs.string.length, lcs.string);
+                const secondAdd = crossSentBoundary(j, lcs.y, lcs.string.length, lcs.string);
+                const adds = firstAdd.concat(secondAdd);
+                // console.log("adds", adds);
+
+                for (let a=0; a<adds.length; a++) {
+                    if (!overlaps.hasOwnProperty(adds[a].str)) {
+                        overlaps[adds[a].str] = [];
+                    }
+                    overlaps[adds[a].str].push(adds[a])
+                }
+
+                // Old implementation before breaking on sentence boundaries
+
+                // if (!overlaps.hasOwnProperty(lcs.string)) {
+                //     overlaps[lcs.string] = []
+                // }
+                // overlaps[lcs.string].push({"i": i, "j": lcs.x, "n": lcs.string.length})
+                // overlaps[lcs.string].push({"i": j, "j": lcs.y, "n": lcs.string.length})
+                // overlaps[lcs.string]
+            }
+        }
+        for (const key in overlaps) {
+            if (overlaps[key].length === 1) {
+                delete overlaps[key];
+            }
+        }
+        console.log("overlaps", overlaps);
+        // Convert to [key, value] pairs and calculate max n for each overlap
+        let pairs = Object.entries(overlaps).map(([string, locations]) => {
+            let maxN = Math.max(...locations.map((location) => location.n));
+            let count = locations.length;
+            return [string, locations, maxN, count];
+        }).filter(([, , maxN]) => maxN > 2);
+        // console.log("pairs", pairs);
+
+        // Remove overlaps that have n < 3
+
+        // Sort by max n, in descending order, then by count, also in descending order
+        // !! reversing this, sort first by count, then by max n
+        // pairs.sort((a, b) => b[2] - a[2] || b[3] - a[3]);
+        // pairs.sort((a, b) => b[3] - a[3] || b[2] - a[2]);
+
+        // try a weighted combo, instead of ordering by one and then the other
+        // suggested by ChatGPT lol
+        const weightForMaxN = 0.75;  // You can adjust this value to emphasize or de-emphasize maxN
+        const weightForCount = 1 - weightForMaxN;  // Makes sure the two weights sum up to 1
+
+        pairs.sort((a, b) =>
+            (b[2] * weightForMaxN + b[3] * weightForCount) -
+            (a[2] * weightForMaxN + a[3] * weightForCount)
+        );
+
+        // Get top k overlaps
+        let topKoverlaps = {};
+        let blockedIndices = Array(responses.length)
+            .fill()
+            .map(() => new Set());
+
+        for (let i = 0; i < pairs.length; ++i) {
+            const [string, locations] = pairs[i];
+
+            if (locations.length === 1) {
+              continue;
+            }
+
+            // check if a string is overlapping with an already-added string
+            let overlapped = false;
+
+            for (const location of locations) {
+              for (let idx = location.j; idx < location.j + location.n; idx++) {
+                if (blockedIndices[location.i].has(idx)) {
+                  overlapped = true;
+                  break;
+                }
+              }
+              if (overlapped) break;
+            }
+
+            if (!overlapped) {
+              topKoverlaps[string] = locations;
+              if (Object.keys(topKoverlaps).length === k) break;
+
+              for (const location of locations) {
+                for (let idx = location.j; idx < location.j + location.n; idx++) {
+                  blockedIndices[location.i].add(idx);
+                }
+              }
+            }
+        }
+
+
+        return topKoverlaps;
+    }
+
+    // function to learn the bm25 vectors
+    const getBm25Vectors = () => {
+        const bm25 = BM25Vectorizer();
+        const corpus = jsonResponsesMod.map((obj) => obj.response);
+        corpus.forEach((doc) => bm25.learn(nlp.readDoc(doc).tokens().out(its.lemma)));;
+        return bm25;
+    }
+
+    // calcualte idf arrays for each vector
+    const getIdfArray = (bm25) => {
+        // pull out tf-idf and top terms
+        const idf_array = bm25.out(its.idf);
+        const idf_obj = idf_array.reduce((obj, [key, val]) => {
+            obj[key] = val;
+            return obj;
+        }, {});
+        return idf_obj;
+    }
+
+    // calculate tf-idf for doc i and return top n scoring terms
+    const topTfidfTerms = (i, n) => {
+        const tf = bm25.doc(i).out(its.tf);
+        const tfidf = tf.map((arr) => [arr[0], arr[1]*idf_obj[arr[0]]])
+        tfidf.sort((a, b) => b[1] - a[1]);
+        let top = tfidf.slice(0, n);
+        return top.map(term => term[0]);
+    };
+
+    // function to remove stopwords from tfidfArray
+    const removeStopWords = (outputArray, stopWords, n) => {
+        const updatedArray = outputArray.map(innerArray => {
+            return innerArray.filter(word => !stopWords.includes(word));
+        });
+        return updatedArray;
+    }
+
+    const bm25 = getBm25Vectors();
+    const idf_obj = getIdfArray(bm25);
+    const baseTfidfArray = [...Array(jsonResponsesMod.length).keys()].map((i) => topTfidfTerms(i, 10));
+    const tfidfN = 5;
+    const tfidfArray = removeStopWords(baseTfidfArray, stop).map((arr) => arr.slice(0,tfidfN));
+
+    console.log('idf_obj', idf_obj);
+    console.log('tfidfArray', tfidfArray);
+
+
+
     
     // get the original prompt
     let prompt = jsonResponses[0].prompt
@@ -798,44 +756,12 @@ const GridInspectNode = ({ data, id }) => {
     console.log('altValues', altValues);
 
     // calculate longest common substring for each pair
-    // const rowLCS = gridResponses.map((row) => findOverlap(row.map((cell) => cell.responseTokenized), 5));
-    // const colLCS = gridResponses[0].map((_, i) => findOverlap(gridResponses.map((row) => row[i].responseTokenized), 5));
-    // const allLCS = findOverlap(gridResponses.flatMap(item => item).map(item => item.responseTokenized), 5);
     const numOverlaps = Math.min(Math.floor(jsonResponsesMod.length / 2), llmColorPalette.length-1);
     const allLCS = findOverlap(jsonResponsesMod.map(item => item.responseTokenized), numOverlaps);
     const allLCS_colors = getColors(allLCS);
     console.log("allLCS", allLCS);
     console.log("allLCS_colors", allLCS_colors);
 
-
-    // lcs highlighting uses the same functions as the old ngram ones
-    // because the detecting algorithms return the same output form
-    // const shouldHighlightRowNgrams = (rowIndex, cellIndex, tokenIndex) => {
-    //     for (const [ngram, locations] of Object.entries(rowLCS[rowIndex])) {
-    //         for (let l = 0; l < locations.length; l++) {
-    //           if (locations[l].i === cellIndex) {
-    //             // if this ngram occurs in this string
-    //             if (tokenIndex >= locations[l].j && tokenIndex < locations[l].j + locations[l].n) {
-    //                 return true;
-    //             }
-    //           }
-    //         }
-    //     }
-    //     return false;
-    // }
-    // const shouldHighlightColNgrams = (rowIndex, cellIndex, tokenIndex) => {
-    //     for (const [ngram, locations] of Object.entries(colLCS[cellIndex])) {
-    //         for (let l = 0; l < locations.length; l++) {
-    //           if (locations[l].i === rowIndex) {
-    //             // if this ngram occurs in this string
-    //             if (tokenIndex >= locations[l].j && tokenIndex < locations[l].j + locations[l].n) {
-    //                 return true;
-    //             }
-    //           }
-    //         }
-    //     }
-    //     return false;
-    // }
     const shouldHighlightAllNgrams = (cell, tokenIndex) => {
         for (const [ngram, locations] of Object.entries(allLCS)) {
             for (let l=0; l<locations.length; l++) {

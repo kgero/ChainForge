@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Handle } from 'react-flow-renderer';
 import useStore from './store';
-import NodeLabel from './NodeLabelComponent'
+import NodeLabel from './NodeLabelComponent';
 import LLMResponseInspector, { exportToExcel } from './LLMResponseInspector';
-import {BASE_URL} from './store';
+import fetch_from_backend from './fetch_from_backend';
 
 const InspectorNode = ({ data, id }) => {
 
@@ -26,14 +26,8 @@ const InspectorNode = ({ data, id }) => {
     is_fetching = true;
 
     // Grab responses associated with those ids:
-    fetch(BASE_URL + 'app/grabResponses', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-        body: JSON.stringify({
-            'responses': input_node_ids,
-        }),
-    }).then(function(res) {
-        return res.json();
+    fetch_from_backend('grabResponses', {
+      'responses': input_node_ids
     }).then(function(json) {
         if (json.responses && json.responses.length > 0) {
             setJSONResponses(json.responses);
@@ -75,7 +69,8 @@ const InspectorNode = ({ data, id }) => {
         type="target"
         position="left"
         id="input"
-        style={{ top: "50%", background: '#555' }}
+        className="grouped-handle"
+        style={{ top: "50%" }}
         onConnect={handleOnConnect}
       />
     </div>

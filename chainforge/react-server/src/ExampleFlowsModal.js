@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
-import { SimpleGrid, Card, Modal, Image, Group, Text, Button, Badge, Tabs, Alert, Code } from '@mantine/core';
+import React, { forwardRef, useImperativeHandle } from 'react';
+import { SimpleGrid, Card, Modal, Text, Button, Tabs } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconChartDots3, IconAlertCircle } from '@tabler/icons-react';
-import { BASE_URL } from './store';
+import { IconChartDots3 } from '@tabler/icons-react';
 
 /** The preconverted OpenAI evals we can load from,
  * along with their descriptions, extracted from the evals registry. */
@@ -242,7 +241,7 @@ const ExampleFlowsModal = forwardRef((props, ref) => {
   }));
 
   return (
-    <Modal size='xl' opened={opened} onClose={close} title={<div><IconChartDots3 size={24} style={{position:'relative', marginRight: '8px', top: '4px'}} /><span style={{fontSize: '14pt'}}>Example Flows</span></div>} closeOnClickOutside={true} style={{position: 'relative', 'left': '-100px'}}>      
+    <Modal size='xl' opened={opened} onClose={close} title={<div><IconChartDots3 size={24} style={{position:'relative', marginRight: '8px', top: '4px'}} /><span style={{fontSize: '14pt'}}>Example Flows</span></div>} closeOnClickOutside={true} style={{position: 'relative', 'left': '-5%'}}>      
       <Tabs defaultValue="examples">
         <Tabs.List>
           <Tabs.Tab value="examples" >Basic Examples</Tabs.Tab>
@@ -261,7 +260,7 @@ const ExampleFlowsModal = forwardRef((props, ref) => {
                             filename="prompt-injection-test"
                             onSelect={onSelect}
             />
-            <ExampleFlowCard title="Use an LLM as an evaluator"
+            <ExampleFlowCard title="Chain prompts together"
                             description="Chain one prompt into another to extract entities from a text response. Plots number of entities." 
                             filename="chaining-prompts"
                             onSelect={onSelect}
@@ -303,6 +302,7 @@ const ExampleFlowsModal = forwardRef((props, ref) => {
                             description={OAIEVALS[evalname] || 'No description was provided.'}
                             filename={evalname}
                             onSelect={(name) => onSelect(name, 'openai-eval')}
+                            key={evalname}
               /> 
             ))
           }

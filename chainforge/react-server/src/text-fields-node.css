@@ -6,10 +6,20 @@
     min-width: 200px;
   }
 
+  path.react-flow__edge-path:hover {
+    stroke: #222;
+    stroke-width: 2px;
+  }
+
   hr {
     border: none;
     background-color: #bbb;
     height: 1px;
+  }
+
+  .grouped-handle {
+    background: #555; 
+    height: 15px !important;
   }
 
   .small-standard-font {
@@ -32,6 +42,7 @@
     text-align: left;
     border-radius: 6px;
     padding: 5px;
+    pointer-events: none;
 
     /* Position the tooltip */
     position: absolute;
@@ -95,6 +106,21 @@
     100% {
       transform: rotate(360deg);
     }
+  }
+
+  .llm-list-container {
+    background-color: #eee; 
+    border-radius: 4px;
+    padding: 8px;
+    overflow-y: auto;
+    max-height: 205px;
+  }
+  .llm-list-backdrop {
+    margin: 6px 0px 6px 6px;
+    padding-bottom: 4px;
+    text-align: left; 
+    font-size: 10pt;
+    color: #777;
   }
   
   .input-field {
@@ -184,6 +210,14 @@
   .eval-inspect-response-footer button {
     cursor: zoom-in;
   }
+  /* .blink-inspect-response-footer {
+    animation: blink-footer 0.7s ease-in 1;
+  }
+  @keyframes blink-footer {
+    50% {
+      background-color: #eff6fbb1; 
+    }
+  } */
 
   .ace-editor-container {
     resize:vertical;
@@ -273,6 +307,19 @@
   .inspect-modal-response-container .num-same-responses {
     font-size: 10pt;
   }
+  .inspect-table-var {
+    background-color: rgb(224, 244, 250);
+    padding-top: 10px;
+    border-right: 1px solid #cde; 
+    font-weight: 500;
+    white-space: pre-wrap;
+  }
+  .inspect-table-llm-resp {
+    padding-top: 8px;
+    padding-bottom: 20px;
+    min-width: 160px;
+    border-right: 1px solid #eee;
+  }
   .response-group-component-header:hover {
     color: #05e;
     cursor: pointer;
@@ -328,6 +375,7 @@
     border-bottom-color: #aaa;
     box-shadow: 1px 1px 8px #ccc;
     max-height: 200px;
+    overflow-y: auto;
   }
   .inspect-modal-prompt-text {
     font-family: monospace;
@@ -337,6 +385,17 @@
   .inspect-modal-prompt-prefix {
     font-size: 10pt;
     font-weight: bold;
+  }
+
+  .prompt-preview {
+    font-size: 10pt;
+    font-family: monospace;
+    border-radius: 6px;
+    padding: 8px;
+    margin: 10px 0px;
+    background-color: #ddd;
+    color: #444;
+    white-space: pre-wrap;
   }
 
   .small-response {
@@ -511,9 +570,10 @@
     white-space: pre-wrap; 
     overflow-y: scroll;
     max-height: 150px;
+    margin: 6px 0px;
     font-family: monospace;
     font-size: 10pt;
-    line-height: 1.2; 
+    line-height: 1.0; 
     cursor: text;
   }
   th .content-editable-div {
@@ -591,6 +651,15 @@
     line-height: 1.2;
     border-color: #999;
   }
+  .prompt-field-fixed .mantine-Textarea-wrapper textarea {
+    resize: vertical;
+    overflow-y: auto;
+    padding: calc(0.5rem / 3);
+    font-size: 10pt;
+    font-family: monospace;
+    line-height: 1.2;
+    border-color: #999;
+  }
 
   .add-text-field-btn {
     display: flex;
@@ -644,7 +713,7 @@
   border-radius: 5px;
   border: 1px solid #999;
   font-size: 12px;
-  background: transparent;
+  background: rgb(63, 204, 106, 0.2);
   color: #333;
   overflow: hidden;
   box-shadow: 0 0 0 0 transparent;
@@ -816,6 +885,57 @@
     50% {
         opacity: 0;
     }
+}
+
+/* Chat history bubbles */
+.chat-bubble {
+  --r: 15px; /* the radius */
+  --t: 25px; /* the size of the tail */
+  
+  max-width: 80%;
+  padding: calc(2*var(--r)/3);
+  mask: 
+    radial-gradient(var(--t) at var(--_d) 0,#0000 98%,#000 102%) 
+      var(--_d) 100%/calc(100% - var(--r)) var(--t) no-repeat,
+    conic-gradient(at var(--r) var(--r),#000 75%,#0000 0) 
+      calc(var(--r)/-2) calc(var(--r)/-2) padding-box, 
+    radial-gradient(50% 50%,#000 98%,#0000 101%) 
+      0 0/var(--r) var(--r) space padding-box;
+  background: #333 border-box;
+  color: #fff;
+}
+.chat-msg-left {
+  --_d: 0%;
+  border-left: var(--t) solid #0000;
+  margin-right: var(--t);
+  place-self: start;
+}
+.chat-msg-right {
+  --_d: 100%;
+  border-right: var(--t) solid #0000;
+  margin-left: var(--t);
+  place-self: end;
+}
+.chat-history {
+  margin: 0;
+  min-height: 10vh;
+  display: grid;
+  place-content: left;
+  width: 100%;
+  gap: 10px;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+}
+
+.something-changed-circle {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 0px solid;
+  background-color: #ff0000;
+  opacity: 0.7;
+  margin-bottom: 10px;
+  margin-left: 2px;
 }
 
 /* Model settings form styling */

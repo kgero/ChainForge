@@ -3,11 +3,9 @@ import {
   addEdge,
   applyNodeChanges,
   applyEdgeChanges,
-  useViewport,
 } from 'react-flow-renderer';
-
-// Where the ChainForge Flask server is being hosted. 
-export const BASE_URL = 'http://localhost:8000/';
+import { escapeBraces } from './backend/template';
+import { filterDict } from './backend/utils';
 
 // Initial project settings
 const initialAPIKeys = {};
@@ -26,6 +24,8 @@ export const colorPalettes = {
   llm: llmColorPalette,
   var: varColorPalette,
 }
+
+const refreshableOutputNodeTypes = new Set(['evaluator', 'prompt', 'inspect', 'vis', 'llmeval', 'textfields', 'chat', 'simpleval']);
 
 // A global store of variables, used for maintaining state
 // across ChainForge and ReactFlow components.
@@ -104,6 +104,15 @@ const useStore = create((set, get) => ({
   outputEdgesForNode: (sourceNodeId) => {
     return get().edges.filter(e => e.source == sourceNodeId);
   },
+  pingOutputNodes: (sourceNodeId) => {
+    const out_nodes = get().outputEdgesForNode(sourceNodeId).map(e => e.target);
+    out_nodes.forEach(n => {
+        const node = get().getNode(n);
+        if (node && refreshableOutputNodeTypes.has(node.type)) {
+            get().setDataPropsForNode(node.id, { refresh: true });
+        }
+    });
+  },
   output: (sourceNodeId, sourceHandleKey) => {
     // Get the source node
     const src_node = get().getNode(sourceNodeId);
@@ -128,17 +137,25 @@ const useStore = create((set, get) => ({
 
             // Extract all the data for every row of the source column, appending the other values as 'meta-vars':
             return rows.map(row => {
+              const row_keys = Object.keys(row);
+
+              // Check if this is an 'empty' row (with all empty strings); if so, skip it:
+              if (row_keys.every(key => key === '__uid' || !row[key] || row[key].trim() === ""))
+                return undefined;
+
               const row_excluding_col = {};
-              Object.keys(row).forEach(key => {
+              row_keys.forEach(key => {
                 if (key !== src_col.key && key !== '__uid')
                   row_excluding_col[col_header_lookup[key]] = row[key];
               });
               return {
-                text: ((src_col.key in row) ? row[src_col.key] : ""),
+                // We escape any braces in the source text before they're passed downstream.
+                // This is a special property of tabular data nodes: we don't want their text to be treated as prompt templates.
+                text: escapeBraces((src_col.key in row) ? row[src_col.key] : ""),
                 metavars: row_excluding_col,
                 associate_id: row.__uid, // this is used by the backend to 'carry' certain values together
               }
-            });
+            }).filter(r => r !== undefined);
           } else {
             console.error(`Could not find table column with source handle name ${sourceHandleKey}`);
             return null;
@@ -149,8 +166,15 @@ const useStore = create((set, get) => ({
         if ("fields" in src_node.data) {
           if (Array.isArray(src_node.data["fields"]))
             return src_node.data["fields"];
-          else
-            return Object.values(src_node.data["fields"]);
+          else {
+            // We have to filter over a special 'fields_visibility' prop, which 
+            // can select what fields get output:
+            if ("fields_visibility" in src_node.data)
+              return Object.values(filterDict(src_node.data["fields"], 
+                                              fid => src_node.data["fields_visibility"][fid] !== false));
+            else  // return all field values
+              return Object.values(src_node.data["fields"]);
+          }
         }
         // NOTE: This assumes it's on the 'data' prop, with the same id as the handle:
         else return src_node.data[sourceHandleKey];
@@ -210,8 +234,13 @@ const useStore = create((set, get) => ({
     // Get the target node information
     const target = get().getNode(connection.target);
     
-    if (target.type === 'vis' || target.type === 'inspect' || target.type === 'grid') {
+    if (target.type === 'vis' || target.type === 'inspect' || target.type === 'simpleval' || target.type === 'grid') {
       get().setDataPropsForNode(target.id, { input: connection.source });
+    }
+
+    // Ping target node to fresh if necessary
+    if (target && refreshableOutputNodeTypes.has(target.type)) {
+      get().setDataPropsForNode(target.id, { refresh: true });
     }
 
     connection.interactionWidth = 100;

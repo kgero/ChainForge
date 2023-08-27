@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Handle } from 'react-flow-renderer';
 import useStore from './store';
 import NodeLabel from './NodeLabelComponent'
-import {BASE_URL} from './store';
+// import {BASE_URL} from './store';
+import fetch_from_backend from './fetch_from_backend'; // added for typescript
 import { Container, Grid, Select, Radio, NumberInput, Group, Paper, Text, Accordion, SegmentedControl } from '@mantine/core';
 import './output-grid.css';
 
@@ -1184,14 +1185,28 @@ const GridInspectNode = ({ data, id }) => {
     is_fetching = true;
 
     // Grab responses associated with those ids:
-    fetch(BASE_URL + 'app/grabResponses', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
-        body: JSON.stringify({
-            'responses': input_node_ids,
-        }),
-    }).then(function(res) {
-        return res.json();
+
+    // OLD CODE PRE-TYPESCRIPT
+    // fetch(BASE_URL + 'app/grabResponses', {
+    //     method: 'POST',
+    //     headers: {'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*'},
+    //     body: JSON.stringify({
+    //         'responses': input_node_ids,
+    //     }),
+    // }).then(function(res) {
+    //     return res.json();
+    // }).then(function(json) {
+    //     if (json.responses && json.responses.length > 0) {
+    //         setJSONResponses(json.responses);
+    //     }
+    //     is_fetching = false;
+    // }).catch(() => {
+    //     is_fetching = false; 
+    // });
+
+    // NEW CODE IN TYPESCRIPT VERSION
+    fetch_from_backend('grabResponses', {
+      'responses': input_node_ids
     }).then(function(json) {
         if (json.responses && json.responses.length > 0) {
             setJSONResponses(json.responses);

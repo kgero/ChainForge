@@ -1,0 +1,60 @@
+.katy-inspect-response-container {
+    overflow-y: scroll;
+    min-width: 150px;
+    width: 1300px;
+    min-height: 500px;
+    height: 600px;
+    max-width: 2000px;
+    max-height: 2000px;
+    resize: both;
+  }
+table.outputgrid {
+    border-collapse: separate;
+    border-spacing: 10px;
+    max-width: 100%;
+
+  }
+td {
+	border: 0.0625rem solid #228be6;
+	border-radius: 0.25rem;
+	min-width: 170px;
+	min-height: 170px;
+	padding: 10px 10px 10px 10px;
+	vertical-align: middle;
+	font-size: .8em;
+	cursor: text;
+	pointer-events: all;
+	user-select: text; 
+}  
+span.rowName {
+  -ms-writing-mode: tb-rl;
+  -webkit-writing-mode: vertical-rl;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+}
+p.prompt {
+	text-align: center;
+	font-weight: bold;
+}
+
+p.sentenceP {
+/*	line-height: .5em;*/
+	margin: .35em;
+}
+
+.display-linebreak {
+  white-space: pre-line;
+}
+
+.clusterGroup {
+	font-size: .8em;
+	cursor: text;
+	pointer-events: all;
+	user-select: text; 
+	margin-top: 20px;
+}
+
+.mantine-SegmentedControl-root {
+	border: 0.0625rem solid #ced4da;
+}

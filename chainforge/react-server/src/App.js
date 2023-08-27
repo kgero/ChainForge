@@ -18,6 +18,7 @@ import ScriptNode from './ScriptNode';
 import AlertModal from './AlertModal';
 import CsvNode from './CsvNode';
 import TabularDataNode from './TabularDataNode';
+import GridInspectNode from './GridInspectNode';
 import CommentNode from './CommentNode';
 import GlobalSettingsModal from './GlobalSettingsModal';
 import ExampleFlowsModal from './ExampleFlowsModal';
@@ -84,6 +85,7 @@ const nodeTypes = {
   script: ScriptNode,
   csv: CsvNode,
   table: TabularDataNode,
+  grid: GridInspectNode,
   comment: CommentNode,
 };
 
@@ -219,6 +221,11 @@ const App = () => {
     addNode({ id: 'llmeval-'+Date.now(), type: 'llmeval', data: {}, position: {x: x-200, y:y-100} });
   };
 
+  const addGridNode = (event) => {
+    const { x, y } = getViewportCenter();
+    addNode({ id: 'gridNode-'+Date.now(), type: 'grid', data: {}, position: {x: x-200, y:y-100} });
+  };
+  
   const onClickExamples = () => {
     if (examplesModal && examplesModal.current)
       examplesModal.current.trigger();
@@ -758,6 +765,10 @@ const App = () => {
             </MenuTooltip>
             <MenuTooltip label="Used to inspect responses from prompter or evaluation nodes, without opening up the pop-up view.">
               <Menu.Item onClick={addInspectNode} icon={'🔍'}> Inspect Node </Menu.Item>
+              <Menu.Item onClick={addCsvNode} icon={<IconCsv size="16px" />}> CSV Node </Menu.Item>
+              <Menu.Item onClick={addTabularDataNode} icon={'🗂️'}> Tabular Data Node </Menu.Item>
+              <Menu.Item onClick={addGridNode} icon={'⊞'}> Grid Inspect Node </Menu.Item>
+              <Menu.Item onClick={addScriptNode} icon={<IconSettingsAutomation size="16px" />}> Global Scripts </Menu.Item>
             </MenuTooltip>
             <Menu.Divider />
             <Menu.Label>Misc</Menu.Label>

@@ -1134,7 +1134,7 @@ const GridInspectNode = ({ data, id }) => {
 
     // Set the HTML / React element
     const my_vis_component = (<Container fluid="true">
-        <div style={{position: "sticky", top: "0", backgroundColor: "white"}}>
+        <div style={{position: "sticky", top: "0", backgroundColor: "white", padding: "10px"}}>
             <Grid> 
                 <Grid.Col span={2} style={{backgroundColor: '#E7F5FF', borderRadius: '5px', margin: '10px'}}>
                     <div style={{fontSize: '10pt', color: '#777'}}>Set display type:</div>

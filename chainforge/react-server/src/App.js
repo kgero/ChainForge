@@ -754,7 +754,7 @@ const App = () => {
             </MenuTooltip>
             {IS_RUNNING_LOCALLY ? (<MenuTooltip label="Evaluate responses by writing Python code.">
                   <Menu.Item onClick={() => addEvalNode('python')} icon={<IconTerminal size="16px" />}> Python Evaluator Node </Menu.Item>
-            </MenuTooltip>): <></>}
+            </MenuTooltip>): null}
             <MenuTooltip label="Evaluate responses with an LLM like GPT-4.">
               <Menu.Item onClick={addLLMEvalNode} icon={<IconRobot size="16px" />}> LLM Scorer Node</Menu.Item>
             </MenuTooltip>
@@ -764,20 +764,19 @@ const App = () => {
               <Menu.Item onClick={addVisNode} icon={'📊'}> Vis Node </Menu.Item>
             </MenuTooltip>
             <MenuTooltip label="Used to inspect responses from prompter or evaluation nodes, without opening up the pop-up view.">
-              <Menu.Item onClick={addInspectNode} icon={'🔍'}> Inspect Node </Menu.Item>
-              <Menu.Item onClick={addCsvNode} icon={<IconCsv size="16px" />}> CSV Node </Menu.Item>
-              <Menu.Item onClick={addTabularDataNode} icon={'🗂️'}> Tabular Data Node </Menu.Item>
-              <Menu.Item onClick={addGridNode} icon={'⊞'}> Grid Inspect Node </Menu.Item>
-              <Menu.Item onClick={addScriptNode} icon={<IconSettingsAutomation size="16px" />}> Global Scripts </Menu.Item>
+              <div>
+                <Menu.Item onClick={addInspectNode} icon={'🔍'}> Inspect Node </Menu.Item>
+                <Menu.Item onClick={addGridNode} icon={'⊞'}> Grid Inspect Node </Menu.Item>
+                <Menu.Item onClick={addCsvNode} icon={<IconCsv size="16px" />}> CSV Node </Menu.Item>
+                <Menu.Item onClick={addTabularDataNode} icon={'🗂️'}> Tabular Data Node </Menu.Item>
+                <Menu.Item onClick={addScriptNode} icon={<IconSettingsAutomation size="16px" />}> Global Scripts </Menu.Item>
+              </div>
             </MenuTooltip>
             <Menu.Divider />
             <Menu.Label>Misc</Menu.Label>
             <MenuTooltip label="Make a comment about your flow.">
               <Menu.Item onClick={addCommentNode} icon={'✏️'}> Comment Node </Menu.Item>
             </MenuTooltip>
-            {IS_RUNNING_LOCALLY ? (<MenuTooltip label="Specify directories to load as local packages, so they can be imported in your Python evaluator nodes (add to sys path).">
-              <Menu.Item onClick={addScriptNode} icon={<IconSettingsAutomation size="16px" />}> Global Python Scripts </Menu.Item>
-            </MenuTooltip>): <></>}
           </Menu.Dropdown>
         </Menu>
         <Button onClick={exportFlow} size="sm" variant="outline" bg="#eee" compact mr='xs'>Export</Button>

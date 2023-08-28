@@ -538,6 +538,10 @@ const GridInspectNode = ({ data, id }) => {
                     // console.log("crossSentBoundary", respIndex, tokenIndex, numTokens, lcsString);
                     const sentObj = jsonResponsesMod[respIndex].sentences;
                     // console.log("sentObj", sentObj);
+                    if (sentObj.length === 1) {
+                      // doesn't cross sentence boundary
+                      return [{"i": respIndex, "j": tokenIndex, "n": numTokens, "str": lcsString}];
+                    }
                     for (let k=0; k < sentObj.length; k++) {
                         // console.log("sentObj[k]", sentObj[k]);
                         // console.log("sentObj[k+1]", sentObj[k+1]);

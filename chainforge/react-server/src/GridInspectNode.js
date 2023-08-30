@@ -833,14 +833,14 @@ const GridInspectNode = ({ data, id }) => {
 
     col_names.unshift(""); // add empty string for row headers
 
-    const header = col_names.map((el) => { return <th>{el}</th> });
+    const header = col_names.map((el, index) => { return <th key={"el-th-"+index}>{el}</th> });
 
     const cells = gridResponses.map((row, rowIndex) => {
         return (
-            <tr>
-                <th><span class="rowName">{row_names[rowIndex]}</span></th>
+            <tr key={"tr-"+rowIndex}>
+                <th><span className="rowName">{row_names[rowIndex]}</span></th>
                 {row.map((cell, cellIndex) => (
-                    <td key={cellIndex}>
+                    <td key={"td-"+cellIndex}>
                             {cell.responseTokenized.map((token, tokenIndex) => {
                                 let highlight = false; 
                                 let oddEven = false;
@@ -852,12 +852,6 @@ const GridInspectNode = ({ data, id }) => {
                                 }
                                 else if (highlightRadioValue === "tfidf") {
                                     [highlight, color] = shouldHighlightTfidf(cell, tokenIndex);
-                                    // color = null;
-                                    // if (highlight) {
-                                    //     spanStyle = {fontWeight: "bold"}
-                                    //     highlight = false;
-                                    //     console.log("tfidf highlighting");
-                                    // }
                                     
                                 }
                                 else if (highlightRadioValue === "sent") {
@@ -870,9 +864,15 @@ const GridInspectNode = ({ data, id }) => {
                                     spanStyle = {backgroundColor: color}
                                 }
 
-                                if (token == "<br/>") {return <br/>;}
-                                if (token == "<br/><br/>") {return <><br/><br/></>;}
-                                return <span key={tokenIndex} style={spanStyle}>{token} </span>;;
+                                if (token == "<br/>") {return <br key={"br-" + tokenIndex} />;}
+                                if (token == "<br/><br/>") {
+                                  return (
+                                    <React.Fragment key={"brbr-" + tokenIndex}>
+                                        <br />
+                                        <br />
+                                    </React.Fragment>
+                                );}
+                                return <span key={"cellspan-"+tokenIndex} style={spanStyle}>{token} </span>;;
                             })}
                     </td>
                 ))}
@@ -880,9 +880,9 @@ const GridInspectNode = ({ data, id }) => {
         );
     });
 
-    const table = (<table class='outputgrid'>
+    const table = (<table className='outputgrid'>
             <tbody>
-                <tr>{header}</tr>
+                <tr key="header">{header}</tr>
                 {cells}
             </tbody>
         </table>);
@@ -904,10 +904,10 @@ const GridInspectNode = ({ data, id }) => {
         const thisKey = {colorOption} + "-" + {colorIndex}
         return (
             <>
-                <span style={spanStyle}>&nbsp;&nbsp;&nbsp;</span>
-                <span>&nbsp;</span>
+                <span key={"span1-"+colorIndex} style={spanStyle}>&nbsp;&nbsp;&nbsp;</span>
+                <span key={"span2-"+colorIndex}>&nbsp;</span>
                 <span key={thisKey}>{colorOption}</span>
-                <span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                <span key={"span4-"+colorIndex}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
             </>)
     })
 
@@ -969,8 +969,8 @@ const GridInspectNode = ({ data, id }) => {
             
             return (
                 <p key={sentId} className="sentenceP">
-                <span style={{backgroundColor: getColorFromPalette(llmColorPalette, respColorIndex)}}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
-                <span>&nbsp;</span>
+                <span key={"cluster-span1-"+clusterIndex} style={{backgroundColor: getColorFromPalette(llmColorPalette, respColorIndex)}}>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</span>
+                <span key={"cluster-span2-"+clusterIndex}>&nbsp;</span>
                 {filteredTokenIndices.map((tokenIndex, mappedTokenIndex) => {
 
                     const token = getToken(sentId, tokenIndex);
@@ -991,7 +991,7 @@ const GridInspectNode = ({ data, id }) => {
                     }
                     if (token == "<br/>") {return <></>;}
                     if (token == "<br/><br/>") {return <></>;}
-                    return (<span style={spanStyle}>{token} </span>);
+                    return (<span key={"cluster-span3-"+clusterIndex} style={spanStyle}>{token} </span>);
                 })}
                 </p>
                 );
@@ -1084,7 +1084,7 @@ const GridInspectNode = ({ data, id }) => {
         // get the actual options for this value
         let these_options = [...new Set(jsonResponsesMod.map((obj) => obj.vars[alt_value]))];
         return (
-            <Grid.Col span={3}>
+            <Grid.Col span={3} key={"gridcol-"+index}>
                 <Select
                   size="xs"
                   onChange={(value) => handleAltValuesChange(value, alt_value)}
@@ -1145,7 +1145,7 @@ const GridInspectNode = ({ data, id }) => {
                     <div style={{fontSize: '10pt', color: '#777'}}>Set display type:</div>
                     <Grid align="flex-end">
                         <Grid.Col>
-                        <label class="mantine-InputWrapper-label mantine-Select-label mantine-jkwmhw" for="mantine-iyl5n76na" id="mantine-iyl5n76na-label" style={{opacity: '0'}}>model</label>
+                        <label className="mantine-InputWrapper-label mantine-Select-label mantine-jkwmhw" htmlFor="mantine-iyl5n76na" id="mantine-iyl5n76na-label" style={{opacity: '0'}}>model</label>
                         <SegmentedControl color="blue"
                           value={segmentedViewValue}
                           onChange={handleSegmentedViewValueChange}
